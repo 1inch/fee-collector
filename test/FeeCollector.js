@@ -30,8 +30,6 @@ contract('FeeCollector', async function ([_, wallet]) {
         this.dai = await TokenMock.new('DAI', 'DAI');
         this.weth = await TokenMock.new('WETH', 'WETH');
 
-        this.swap = await FeeCollector.new();
-
         // We get the chain id from the contract because Ganache (used for coverage) does not return the same chain id
         // from within the EVM as from the JSON RPC interface.
         // See https://github.com/trufflesuite/ganache-core/issues/515
@@ -41,11 +39,6 @@ contract('FeeCollector', async function ([_, wallet]) {
         await this.weth.mint(wallet, '1000000');
         await this.dai.mint(_, '1000000');
         await this.weth.mint(_, '1000000');
-
-        await this.dai.approve(this.swap.address, '1000000');
-        await this.weth.approve(this.swap.address, '1000000');
-        await this.dai.approve(this.swap.address, '1000000', { from: wallet });
-        await this.weth.approve(this.swap.address, '1000000', { from: wallet });
     });
 
     describe('Something', async function () {

@@ -84,7 +84,7 @@ contract FeeCollector is Ownable /*, BalanceAccounting*/ {
         _k19 = z = z * z / 1e36;
         require(z == 0, "Deceleration is too slow");
 
-        setMinMax(_minValue, _maxValue);
+        // setMinMax(_minValue, _maxValue);
         started = block.timestamp;
     }
 
@@ -113,7 +113,7 @@ contract FeeCollector is Ownable /*, BalanceAccounting*/ {
         period = r;
     }
 
-    function decelerationTable() public pure returns(uint256[20] memory) {
+    function decelerationTable() public view returns(uint256[20] memory) {
         return [
             _k00, _k01, _k02, _k03, _k04,
             _k05, _k06, _k07, _k08, _k09,
@@ -139,12 +139,15 @@ contract FeeCollector is Ownable /*, BalanceAccounting*/ {
 
     function _priceForTime(uint256 time, uint256 _minValue, uint256 _maxValue, uint256[20] memory table) private view returns(uint256 result) {
         result = _maxValue;
-        uint256 secs = time.sub(started).mod(period);
+        // uint256 secs = time.sub(started).mod(period);
         for (uint i = 0; time > 0 && i < table.length; i++) {
             if (time & 1 != 0) {
                 result = result * table[i] / 1e36;
             }
             time >>= 1;
+        }
+        if (result < _minValue) {
+            result = _maxValue;
         }
     }
 
