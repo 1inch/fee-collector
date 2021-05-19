@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.6.0;
+pragma solidity >=0.6.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/math/SafeMath.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "./libraries/UniERC20.sol";
-import "./utils/BalanceAccounting.sol";
+// import "./utils/BalanceAccounting.sol";
 
 
-contract FeeCollector is Ownable, BalanceAccounting {
+contract FeeCollector is Ownable /*, BalanceAccounting*/ {
     using SafeMath for uint256;
     using UniERC20 for IERC20;
 
@@ -42,9 +42,10 @@ contract FeeCollector is Ownable, BalanceAccounting {
         mapping(uint256 => uint256) auctionSettlementPrice;
     }
 
-    uint112 public minValue;
-    uint112 public maxValue;
-    uint32 public period;
+    uint256 public started;
+    uint256 public minValue;
+    uint256 public maxValue;
+    uint256 public period;
     uint256 public auctionRestarted;
     mapping(IERC20 => TokenInfo) public tokenInfo;
 
@@ -84,6 +85,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
         require(z == 0, "Deceleration is too slow");
 
         setMinMax(_minValue, _maxValue);
+        started = block.timestamp;
     }
 
     // v1 -> max * dec ^ time

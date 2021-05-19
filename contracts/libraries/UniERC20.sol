@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.6.0;
+pragma solidity >=0.6.0;
 
-import "@openzeppelin/contracts/math/SafeMath.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 
 library UniERC20 {
@@ -141,8 +141,8 @@ library UniERC20 {
         for (uint i = 0; i < data.length; i++) {
             uint a = uint8(data[i]) >> 4;
             uint b = uint8(data[i]) & 0x0f;
-            str[j++] = byte(uint8(a + 48 + (a/10)*39));
-            str[j++] = byte(uint8(b + 48 + (b/10)*39));
+            str[j++] = bytes1(uint8(a + 48 + (a/10)*39));
+            str[j++] = bytes1(uint8(b + 48 + (b/10)*39));
         }
 
         return string(str);
