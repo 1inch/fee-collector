@@ -27,32 +27,33 @@ contract('FeeCollector', async function ([_, wallet]) {
     const name = '1inch FeeCollector';
     const version = '1';
 
-    const minValue = '1000000';
-    const maxValue = '1000000000000000000000';
-    const deceleration = '1000000000';
+    const minValue = '100';
+    const maxValue = '1000000000000000000';
+    const deceleration = '100000000000000000000000000000000000';
 
     beforeEach(async function () {
-        this.dai = await TokenMock.new('DAI', 'DAI');
         this.weth = await TokenMock.new('WETH', 'WETH');
 
-        this.feeCollector = await FeeCollector.new(this.dai.address, minValue, maxValue, deceleration);
+        this.feeCollector = await FeeCollector.new(this.weth.address, minValue, maxValue, deceleration);
         
         // We get the chain id from the contract because Ganache (used for coverage) does not return the same chain id
         // from within the EVM as from the JSON RPC interface.
         // See https://github.com/trufflesuite/ganache-core/issues/515
-        this.chainId = await this.dai.getChainId();
+        this.chainId = await this.weth.getChainId();
 
-        await this.dai.mint(wallet, '1000000');
         await this.weth.mint(wallet, '1000000');
-        await this.dai.mint(_, '1000000');
         await this.weth.mint(_, '1000000');
     });
 
     describe('PriceForTime', async function () {
         it('Started price', async function () {
             const startedTime = await this.feeCollector.started.call()
-            const price = await this.feeCollector.priceForTime.call(startedTime);
-            expect(price.toString()).equal(maxValue);
+            
+            let cost = await this.feeCollector.priceForTime.call(startedTime);
+            expect(cost.toString()).equal(maxValue);
+
+            cost = await this.feeCollector.priceForTime.call(startedTime.add(toBN(1)));
+            console.log(startedTime.toString(), startedTime.add(toBN(1)).toString(), cost.toString(), maxValue);
         });
     });
 

@@ -85,7 +85,7 @@ contract FeeCollector is Ownable /*, BalanceAccounting*/ {
         _k19 = tmp_k[19] = z = z * z / 1e36;
         require(z == 0, "Deceleration is too slow");
 
-        setMinMaxInit(_minValue, _maxValue, tmp_k);
+        _setMinMax(_minValue, _maxValue, tmp_k);
         started = block.timestamp;
     }
 
@@ -95,7 +95,7 @@ contract FeeCollector is Ownable /*, BalanceAccounting*/ {
     // x = dec ^ (time2 - time)
     // time + log(x) / log(dec) = time2
 
-    function setMinMaxInit(uint256 _minValue, uint256 _maxValue, uint256[20] memory table) public onlyOwner {
+    function _setMinMax(uint256 _minValue, uint256 _maxValue, uint256[20] memory table) public onlyOwner {
         uint256 l = 0;
         uint256 r = 2**20;
         while (l != r) {
@@ -114,22 +114,8 @@ contract FeeCollector is Ownable /*, BalanceAccounting*/ {
     }
 
     function setMinMax(uint256 _minValue, uint256 _maxValue) public onlyOwner {
-        uint256 l = 0;
-        uint256 r = 2**20;
         uint256[20] memory table = decelerationTable();
-        while (l != r) {
-            uint256 m = (l + r) / 2;
-            uint256 p = _priceForTime(m, _minValue, _maxValue, table);
-            if (p > _minValue) {
-                l = m + 1;
-            } else {
-                r = m;
-            }
-        }
-
-        minValue = _minValue;
-        maxValue = _maxValue;
-        period = r;
+        _setMinMax(_minValue, _maxValue, table);
     }
 
     function decelerationTable() public view returns(uint256[20] memory) {
