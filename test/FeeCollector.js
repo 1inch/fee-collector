@@ -19,6 +19,14 @@ function toBN (num) {
     return new BN(num);
 }
 
+function getRandomInt(max) {
+  return Math.floor(Math.random() * max);
+}
+
+const minValue = '100';
+const maxValue = '1000000000000000000';
+const deceleration = '999000000000000000000000000000000000';
+
 contract('FeeCollector', async function ([_, wallet]) {
     const privatekey = '2bdd21761a483f71054e14f5b827213567971c676928d9a1808cbfa4b7501201';
     const account = Wallet.fromPrivateKey(Buffer.from(privatekey, 'hex'));
@@ -27,9 +35,7 @@ contract('FeeCollector', async function ([_, wallet]) {
     const name = '1inch FeeCollector';
     const version = '1';
 
-    const minValue = '100';
-    const maxValue = '1000000000000000000';
-    const deceleration = '100000000000000000000000000000000000';
+    const bn1e36 = toBN("1000000000000000000000000000000000000");
 
     beforeEach(async function () {
         this.weth = await TokenMock.new('WETH', 'WETH');
@@ -45,15 +51,75 @@ contract('FeeCollector', async function ([_, wallet]) {
         await this.weth.mint(_, '1000000');
     });
 
-    describe('PriceForTime', async function () {
-        it('Started price', async function () {
-            const startedTime = await this.feeCollector.started.call()
+    describe('Init', async function () {
+        it('decelerationTable', async function () {
+            const table = await this.feeCollector.decelerationTable.call();
             
-            let cost = await this.feeCollector.priceForTime.call(startedTime);
-            expect(cost.toString()).equal(maxValue);
+            let z = toBN(deceleration);
+            for (let i = 0; i < table.length; i++) {
+                expect(table[i].toString()).equal(z.toString());
+                z = z.mul(z).div(bn1e36);
+            }
+        });
 
-            cost = await this.feeCollector.priceForTime.call(startedTime.add(toBN(1)));
-            console.log(startedTime.toString(), startedTime.add(toBN(1)).toString(), cost.toString(), maxValue);
+        it('started price', async function () {
+            const startedTime = await this.feeCollector.started.call();
+            const cost = await this.feeCollector.priceForTime.call(startedTime);
+            expect(cost.toString()).equal(maxValue);
+        });
+    });
+
+    describe('PriceForTime', async function () {
+        it('one sec after started', async function () {
+            const startedTime = await this.feeCollector.started.call();
+            const cost = await this.feeCollector.priceForTime.call(startedTime.add(toBN(1)));
+            const jsCalcResult = toBN(maxValue).mul(toBN(deceleration)).div(bn1e36);
+            expect(cost.toString()).equal(jsCalcResult.toString());
+        });
+        it('two secs after started', async function () {
+            const startedTime = await this.feeCollector.started.call();
+            const cost = await this.feeCollector.priceForTime.call(startedTime.add(toBN(2)));
+            const jsCalcResult = toBN(maxValue).mul(toBN(deceleration)).div(bn1e36).mul(toBN(deceleration)).div(bn1e36);
+            expect(cost.toString()).equal(jsCalcResult.toString());
+        });
+        it('random n < 60 secs after started', async function () {
+            const n = getRandomInt(60);
+            const decelerationBN = toBN(deceleration);
+
+            const startedTime = await this.feeCollector.started.call();
+            const cost = await this.feeCollector.priceForTime.call(startedTime.add(toBN(n)));
+            
+            let jsCalcResult = toBN(maxValue);
+            let tableCalc = decelerationBN;
+            for (let i = 0; i < Math.floor(Math.log2(n)); i++) {
+                if ((n >> i) & 1 != 0) {
+                    jsCalcResult = jsCalcResult.mul(tableCalc).div(bn1e36);
+                }
+                tableCalc = tableCalc.mul(tableCalc).div(bn1e36);
+            }
+            jsCalcResult = jsCalcResult.mul(tableCalc).div(bn1e36);
+            expect(cost.toString()).equal(jsCalcResult.toString());
+        });
+        it('all n < 60 secs after started', async function () {
+            for (let n = 0; n < 60; n++) {
+                const decelerationBN = toBN(deceleration);
+
+                const startedTime = await this.feeCollector.started.call();
+                const cost = await this.feeCollector.priceForTime.call(startedTime.add(toBN(n)));
+                
+                let jsCalcResult = toBN(maxValue);
+                let tableCalc = decelerationBN;
+                for (let i = 0; i < Math.floor(Math.log2(n)); i++) {
+                    if ((n >> i) & 1 != 0) {
+                        jsCalcResult = jsCalcResult.mul(tableCalc).div(bn1e36);
+                    }
+                    tableCalc = tableCalc.mul(tableCalc).div(bn1e36);
+                }
+                if (n != 0) {
+                    jsCalcResult = jsCalcResult.mul(tableCalc).div(bn1e36);
+                }
+                expect(cost.toString()).equal(jsCalcResult.toString());
+            }
         });
     });
 

@@ -144,15 +144,18 @@ contract FeeCollector is Ownable /*, BalanceAccounting*/ {
 
     function _priceForTime(uint256 time, uint256 _minValue, uint256 _maxValue, uint256[20] memory table) private view returns(uint256 result) {
         result = _maxValue;
-        // uint256 secs = time.sub(started).mod(period);
-        for (uint i = 0; time > 0 && i < table.length; i++) {
-            if (time & 1 != 0) {
-                result = result * table[i] / 1e36;
+        uint256 secs = time.sub(started);
+        for (uint i = 0; secs > 0 && i < table.length; i++) {
+            if (secs & 1 != 0) {
+                result = result * table[i];
+                // if result < _minValue, for example result = 0.9 * _minValue,
+                // then result -> result2 := 0.9 * _maxValue = result * _maxValue / _minValue
+                if (result / 1e36 < _minValue) {
+                    result = result * _maxValue / _minValue;
+                }
+                result = result / 1e36;
             }
-            time >>= 1;
-        }
-        if (result < _minValue) {
-            result = _maxValue;
+            secs >>= 1;
         }
     }
 
