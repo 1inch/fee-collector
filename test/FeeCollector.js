@@ -121,6 +121,25 @@ contract('FeeCollector', async function ([_, wallet]) {
                 expect(cost.toString()).equal(jsCalcResult.toString());
             }
         });
+        it('one period', async function () {
+            const period = await this.feeCollector.period.call();
+            const startedTime = await this.feeCollector.started.call();
+            const cost = await this.feeCollector.priceForTime.call(startedTime.add(period));
+            expect(cost.toString()).equal(maxValue);
+        });
+        it('one sec after period', async function () {
+            const period = await this.feeCollector.period.call();
+            const startedTime = await this.feeCollector.started.call();
+            const cost = await this.feeCollector.priceForTime.call(startedTime.add(period).add(toBN(1)));
+            const cost2 = await this.feeCollector.priceForTime.call(startedTime.add(toBN(1)));
+            expect(cost.toString()).equal(cost2.toString());
+        });
+        it('two period', async function () {
+            const period = await this.feeCollector.period.call();
+            const startedTime = await this.feeCollector.started.call();
+            const cost = await this.feeCollector.priceForTime.call(startedTime.add(period).add(period));
+            expect(cost.toString()).equal(maxValue);
+        });
     });
 
     describe('Something', async function () {

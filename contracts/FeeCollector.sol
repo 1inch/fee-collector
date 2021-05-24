@@ -100,7 +100,7 @@ contract FeeCollector is Ownable /*, BalanceAccounting*/ {
         uint256 r = 2**20;
         while (l != r) {
             uint256 m = (l + r) / 2;
-            uint256 p = _priceForTime(m, _minValue, _maxValue, table);
+            uint256 p = _priceForTime(m, _minValue, _maxValue, table, false);
             if (p > _minValue) {
                 l = m + 1;
             } else {
@@ -132,7 +132,7 @@ contract FeeCollector is Ownable /*, BalanceAccounting*/ {
     }
 
     function priceForTime(uint256 time) public view returns(uint256) {
-        return _priceForTime(time, minValue, maxValue, decelerationTable());
+        return _priceForTime(time, minValue, maxValue, decelerationTable(), true);
     }
 
     // cost1 = max * deceleration^time1
@@ -142,18 +142,15 @@ contract FeeCollector is Ownable /*, BalanceAccounting*/ {
     // deceleration^time1 * k = deceleration^time1 * deceleration^shift
     // k = deceleration^shift
 
-    function _priceForTime(uint256 time, uint256 _minValue, uint256 _maxValue, uint256[20] memory table) private view returns(uint256 result) {
+    function _priceForTime(uint256 time, uint256 _minValue, uint256 _maxValue, uint256[20] memory table, bool isWithPeriod) private view returns(uint256 result) {
         result = _maxValue;
         uint256 secs = time.sub(started);
+        if (isWithPeriod) {
+            secs %= period;
+        }
         for (uint i = 0; secs > 0 && i < table.length; i++) {
             if (secs & 1 != 0) {
-                result = result * table[i];
-                // if result < _minValue, for example result = 0.9 * _minValue,
-                // then result -> result2 := 0.9 * _maxValue = result * _maxValue / _minValue
-                if (result / 1e36 < _minValue) {
-                    result = result * _maxValue / _minValue;
-                }
-                result = result / 1e36;
+                result = result * table[i] / 1e36;
             }
             secs >>= 1;
         }
