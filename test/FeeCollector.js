@@ -121,6 +121,12 @@ contract('FeeCollector', async function ([_, wallet]) {
                 expect(cost.toString()).equal(jsCalcResult.toString());
             }
         });
+        it('one period without 1 sec', async function () {
+            const period = await this.feeCollector.period.call();
+            const startedTime = await this.feeCollector.started.call();
+            const cost = await this.feeCollector.priceForTime.call(startedTime.add(period).sub(toBN(1)));
+            expect(cost.toString()).equal(minValue);
+        });
         it('one period', async function () {
             const period = await this.feeCollector.period.call();
             const startedTime = await this.feeCollector.started.call();

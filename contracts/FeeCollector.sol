@@ -110,7 +110,7 @@ contract FeeCollector is Ownable /*, BalanceAccounting*/ {
 
         minValue = _minValue;
         maxValue = _maxValue;
-        period = r;
+        period = r + 1;
     }
 
     function setMinMax(uint256 _minValue, uint256 _maxValue) public onlyOwner {
