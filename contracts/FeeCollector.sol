@@ -142,18 +142,21 @@ contract FeeCollector is Ownable /*, BalanceAccounting*/ {
     // deceleration^time1 * k = deceleration^time1 * deceleration^shift
     // k = deceleration^shift
 
-    function _priceForTime(uint256 time, uint256 _minValue, uint256 _maxValue, uint256[20] memory table, bool isWithPeriod) private view returns(uint256 result) {
+    function _priceForTime(uint256 time, uint256 _minValue, uint256 _maxValue, uint256[20] memory table, bool isCycle) private view returns(uint256 result) {
         result = _maxValue;
         uint256 secs = time.sub(started);
-        if (isWithPeriod) {
-            secs %= period;
-        }
-        for (uint i = 0; secs > 0 && i < table.length; i++) {
-            if (secs & 1 != 0) {
-                result = result * table[i] / 1e36;
+        unchecked {
+            for (uint i = table.length - 1; i < table.length; i--) {
+                if ((secs >> i) & 1 != 0) {
+                    result = result * table[i];
+                    if (isCycle && result  < _minValue * 1e36) {
+                        result = result / _minValue * _maxValue;
+                    }
+                    result /= 1e36;
+                }
             }
-            secs >>= 1;
         }
+    
     }
 
     function name() external view returns(string memory) {
