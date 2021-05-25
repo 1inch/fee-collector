@@ -47,6 +47,8 @@ contract FeeCollector is Ownable /*, BalanceAccounting*/ {
     uint256 public maxValue;
     uint256 public period;
     uint256 public auctionRestarted;
+    uint256 constant public MAX_PERIOD_EXP = 32;
+    uint256 constant public MIN_SENSIVITY = 1000000;
     mapping(IERC20 => TokenInfo) public tokenInfo;
 
     constructor(
@@ -54,7 +56,7 @@ contract FeeCollector is Ownable /*, BalanceAccounting*/ {
         uint256 _minValue,
         uint256 _maxValue,
         uint256 _deceleration
-    ) public {
+    ) {
         require(_deceleration > 0 && _deceleration < 1e36, "Invalid deceleration");
         require(_minValue < _maxValue, "Invalid min and max values");
         require(_maxValue * 1e36 > 1e36, "Max value is too huge"); // check overflow
@@ -83,7 +85,7 @@ contract FeeCollector is Ownable /*, BalanceAccounting*/ {
         _k17 = tmp_k[17] = z = z * z / 1e36;
         _k18 = tmp_k[18] = z = z * z / 1e36;
         _k19 = tmp_k[19] = z = z * z / 1e36;
-        require(z == 0, "Deceleration is too slow");
+        require(z * z < 1e36, "Deceleration is too slow");
 
         _setMinMax(_minValue, _maxValue, tmp_k);
         started = block.timestamp;
@@ -144,19 +146,37 @@ contract FeeCollector is Ownable /*, BalanceAccounting*/ {
 
     function _priceForTime(uint256 time, uint256 _minValue, uint256 _maxValue, uint256[20] memory table, bool isCycle) private view returns(uint256 result) {
         result = _maxValue;
-        uint256 secs = time.sub(started);
-        unchecked {
-            for (uint i = table.length - 1; i < table.length; i--) {
-                if ((secs >> i) & 1 != 0) {
-                    result = result * table[i];
-                    if (isCycle && result  < _minValue * 1e36) {
-                        result = result / _minValue * _maxValue;
-                    }
-                    result /= 1e36;
+        uint256 secs = time - started;
+        uint256 counter = 0;
+        uint256 tableLen = table.length;
+
+        for (uint i = MAX_PERIOD_EXP; i > 0; i--) {
+            uint ii = i - 1;
+            if ((secs >> ii) & 1 == 0) {
+                if (counter > 1 && (ii >= tableLen || table[ii] < MIN_SENSIVITY)) {
+                    counter <<= 1; // counter *= 2;
+                    continue;
                 }
+            } else {
+                if (ii >= tableLen || table[ii] < MIN_SENSIVITY) {
+                    counter += 1;
+                    counter <<= 1; // counter *= 2;
+                    continue;
+                } 
+                counter += 1;
             }
+
+            // unchecked {
+            for (uint j = 0; j < counter; j++) {
+                result *= table[ii];
+                while (isCycle && result  < _minValue * 1e36) {
+                    result = result / _minValue * _maxValue;    
+                }
+                result /= 1e36;
+            }
+            // }
+            counter = 0;
         }
-    
     }
 
     function name() external view returns(string memory) {
