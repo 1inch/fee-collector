@@ -152,15 +152,16 @@ contract FeeCollector is Ownable /*, BalanceAccounting*/ {
 
         for (uint i = MAX_PERIOD_EXP; i > 0; i--) {
             uint ii = i - 1;
+            uint tii = ii < tableLen ? table[ii] : 0;
             if ((secs >> ii) & 1 == 0) {
-                if (counter > 1 && (ii >= tableLen || table[ii] < MIN_SENSIVITY)) {
+                if (counter > 1 && tii < MIN_SENSIVITY) {
                     counter <<= 1; // counter *= 2;
                     continue;
                 }
             } else {
-                if (ii >= tableLen || table[ii] < MIN_SENSIVITY) {
-                    counter += 1;
-                    counter <<= 1; // counter *= 2;
+                if (tii < MIN_SENSIVITY) {
+                    counter = (counter | 1) << 1;
+                    // counter <<= 1; // counter *= 2;
                     continue;
                 } 
                 counter += 1;
@@ -168,9 +169,11 @@ contract FeeCollector is Ownable /*, BalanceAccounting*/ {
 
             // unchecked {
             for (uint j = 0; j < counter; j++) {
-                result *= table[ii];
-                while (isCycle && result  < _minValue * 1e36) {
-                    result = result / _minValue * _maxValue;    
+                result *= tii;
+                if (isCycle) {
+                    while (result < _minValue * 1e36) {
+                        result = result / _minValue * _maxValue;    
+                    }
                 }
                 result /= 1e36;
             }
