@@ -23,7 +23,7 @@ function getRandomInt(max) {
   return Math.floor(Math.random() * max);
 }
 
-contract('FeeCollector', async function ([_, wallet]) {
+contract('FeeCollector', async function ([_, wallet, lpTokenAddress]) {
     const privatekey = '2bdd21761a483f71054e14f5b827213567971c676928d9a1808cbfa4b7501201';
     const account = Wallet.fromPrivateKey(Buffer.from(privatekey, 'hex'));
 
@@ -37,13 +37,11 @@ contract('FeeCollector', async function ([_, wallet]) {
     const bn1e36 = toBN("1000000000000000000000000000000000000");
     const decelerationBN = toBN(deceleration);
 
-    const tokenAddress = '0x0000000000000000000000000000000000000001';
-    const testUserAddress = '0x1000000000000000000000000000000000000000';
-
     beforeEach(async function () {
         this.weth = await TokenMock.new('WETH', 'WETH');
+        this.inch = await TokenMock.new('1INCH', '1INCH');
 
-        this.feeCollector = await FeeCollector.new(this.weth.address, minValue, deceleration);
+        this.feeCollector = await FeeCollector.new(this.inch.address, minValue, deceleration);
 
         // We get the chain id from the contract because Ganache (used for coverage) does not return the same chain id
         // from within the EVM as from the JSON RPC interface.
@@ -67,7 +65,7 @@ contract('FeeCollector', async function ([_, wallet]) {
 
         it('started price', async function () {
             const lastTime = await this.feeCollector.lastTimeDefault.call();
-            const cost = await this.feeCollector.priceForTime.call(lastTime, tokenAddress);
+            const cost = await this.feeCollector.priceForTime.call(lastTime, this.weth.address);
             expect(cost.toString()).equal(minValue);
         });
     });
@@ -75,50 +73,50 @@ contract('FeeCollector', async function ([_, wallet]) {
     describe('PriceForTime', async function () {
         it('one sec after started', async function () {
             const lastTime = await this.feeCollector.lastTimeDefault.call();
-            const cost = await this.feeCollector.priceForTime.call(lastTime.add(toBN(1)), tokenAddress);
+            const cost = await this.feeCollector.priceForTime.call(lastTime.add(toBN(1)), this.weth.address);
             expect(cost.toString()).equal(minValue.toString());
         });
 
         it('two secs after started', async function () {
             const lastTime = await this.feeCollector.lastTimeDefault.call();
-            const cost = await this.feeCollector.priceForTime.call(lastTime.add(toBN(2)), tokenAddress);
+            const cost = await this.feeCollector.priceForTime.call(lastTime.add(toBN(2)), this.weth.address);
             expect(cost.toString()).equal(minValue.toString());
         });
 
-        it('add reward 100 and check cost changing', async function () {
+        it.only('add reward 100 and check cost changing', async function () {
             const lastTime = await this.feeCollector.lastTimeDefault.call();
-            const cost1 = await this.feeCollector.priceForTime.call(lastTime, tokenAddress);
-            await this.feeCollector.addReward(toBN(100), tokenAddress, testUserAddress);
-            const cost2 = await this.feeCollector.priceForTime.call(lastTime, tokenAddress);
+            const cost1 = await this.feeCollector.priceForTime.call(lastTime, lpTokenAddress);
+            await this.feeCollector.updateReward(wallet, toBN(100), { from: lpTokenAddress });
+            const cost2 = await this.feeCollector.priceForTime.call(lastTime, lpTokenAddress);
             expect(cost1.muln(100).toString()).equal(cost2.toString());
         });
 
         it('add reward 100 and check cost changing after 1 sec', async function () {
             const lastTime = await this.feeCollector.lastTimeDefault.call();
-            await this.feeCollector.addReward(toBN(100), tokenAddress, testUserAddress);
-            const cost1 = await this.feeCollector.priceForTime.call(lastTime, tokenAddress);
+            await this.feeCollector.updateReward(wallet, toBN(100), { from: lpTokenAddress });
+            const cost1 = await this.feeCollector.priceForTime.call(lastTime, lpTokenAddress);
             expect(cost1.toString()).equal(toBN(minValue).muln(100).toString());
-            const cost2 = await this.feeCollector.priceForTime.call(lastTime.add(toBN(1)), tokenAddress);
+            const cost2 = await this.feeCollector.priceForTime.call(lastTime.add(toBN(1)), lpTokenAddress);
             const result = cost1.mul(toBN(deceleration)).div(bn1e36);
             expect(cost2.toString()).equal(result.toString());
         });
 
         it('add reward 1.5e7 and check cost changing to minValue with time', async function () {
             const lastTime = await this.feeCollector.lastTimeDefault.call();
-            await this.feeCollector.addReward(toBN("15000000"), tokenAddress, testUserAddress);
+            await this.feeCollector.updateReward(wallet, toBN(15000000), { from: lpTokenAddress });
             
             const maxValueBN = toBN(minValue).muln(15000000);
             const minValueBN = toBN(minValue);
-            let cost = await this.feeCollector.priceForTime.call(lastTime, tokenAddress);
+            let cost = await this.feeCollector.priceForTime.call(lastTime, lpTokenAddress);
             expect(cost.toString()).equal(maxValueBN.toString());
 
-            cost = await this.feeCollector.priceForTime.call(lastTime.add(toBN(1)), tokenAddress);
+            cost = await this.feeCollector.priceForTime.call(lastTime.add(toBN(1)), lpTokenAddress);
             expect(cost.toString()).equal(maxValueBN.mul(toBN(deceleration)).div(bn1e36).toString());
 
             const step = 1000;
             for (let i = 0; i < 200; i++) {
                 const n = toBN(i).muln(step);
-                cost = await this.feeCollector.priceForTime.call(lastTime.add(n), tokenAddress);
+                cost = await this.feeCollector.priceForTime.call(lastTime.add(n), lpTokenAddress);
                 
                 let result = maxValueBN;
                 let tableCalc = decelerationBN;
@@ -142,18 +140,18 @@ contract('FeeCollector', async function ([_, wallet]) {
         });
     });
 
-    describe('Balances', async function () {
-        it.only('add reward', async function () {
-            const tokenEpochMarket1 = await this.feeCollector.tokenEpochMarket.call(tokenAddress, 0);
-            expect(tokenEpochMarket1.balances).equal(undefined);
+    // describe('Balances', async function () {
+    //     it.only('add reward', async function () {
+    //         const tokenEpochMarket1 = await this.feeCollector.tokenEpochMarket.call(tokenAddress, 0);
+    //         expect(tokenEpochMarket1.balances).equal(undefined);
 
-            await this.feeCollector.addReward(toBN(100), tokenAddress, testUserAddress);
+    //         await this.feeCollector.addReward(toBN(100), tokenAddress, testUserAddress);
 
-            const tokenEpochMarket2 = await this.feeCollector.tokenEpochMarket.call(tokenAddress, 0);
-            console.log(tokenEpochMarket2)
-            // expect(balance2.toString()).equal("100");
-        });
-    });
+    //         const tokenEpochMarket2 = await this.feeCollector.tokenEpochMarket.call(tokenAddress, 0);
+    //         console.log(tokenEpochMarket2)
+    //         // expect(balance2.toString()).equal("100");
+    //     });
+    // });
 
     describe('Something', async function () {
         it('Anything', async function () {
