@@ -46,17 +46,17 @@ contract FeeCollector is Ownable, BalanceAccounting {
         uint256 firstUnprocessedEpoch;
         uint256 currentEpoch;
         mapping(address => uint256) firstUserUnprocessedEpoch;
+        uint256 lastPriceValue;
+        uint256 lastTime;
     }
 
     mapping(IERC20 => TokenInfo) public tokenInfo;
+    mapping(address => mapping(address => uint256)) public tokenBalance;
     mapping(address => uint256) public balance;
 
     uint256 public minValue;
-    uint256 public lastValueDefault;
-    uint256 public lastTimeDefault;
-    mapping(address => uint256) public lastValueToken;
-    mapping(address => uint256) public lastTimeToken;
-    mapping(address => uint256) public feeToken;
+    uint256 public lastTokenPriceValueDefault;
+    uint256 public lastTokenTimeDefault;
     
     constructor(
         IERC20 _token,
@@ -90,8 +90,8 @@ contract FeeCollector is Ownable, BalanceAccounting {
         _k19 = tmp_k[19] = z = z * z / 1e36;
         require(z * z < 1e36, "Deceleration is too slow");
 
-        minValue = lastValueDefault = _minValue;
-        lastTimeDefault = block.timestamp;
+        minValue = lastTokenPriceValueDefault = _minValue;
+        lastTokenTimeDefault = block.timestamp;
     }
 
     function decelerationTable() public view returns(uint256[20] memory) {
@@ -103,20 +103,20 @@ contract FeeCollector is Ownable, BalanceAccounting {
         ];
     }
 
-    function price(address _token) public view returns(uint256 result) {
+    function price(IERC20 _token) public view returns(uint256 result) {
         return priceForTime(block.timestamp, _token);
     }
 
-    function priceForTime(uint256 time, address _token) public view returns(uint256 result) {
+    function priceForTime(uint256 time, IERC20 _token) public view returns(uint256 result) {
         uint256[20] memory table = [
             _k00, _k01, _k02, _k03, _k04,
             _k05, _k06, _k07, _k08, _k09,
             _k10, _k11, _k12, _k13, _k14,
             _k15, _k16, _k17, _k18, _k19
         ];
-        uint256 lastTime = (lastTimeToken[_token] == 0 ? lastTimeDefault : lastTimeToken[_token]);
+        uint256 lastTime = (tokenInfo[_token].lastTime == 0 ? lastTokenTimeDefault : tokenInfo[_token].lastTime);
         uint256 secs = time - lastTime;
-        result = (lastValueToken[_token] == 0 ? lastValueDefault : lastValueToken[_token]);
+        result = (tokenInfo[_token].lastPriceValue == 0 ? lastTokenPriceValueDefault : tokenInfo[_token].lastPriceValue);
         for (uint i = 0; secs > 0 && i < table.length; i++) {
             if (secs & 1 != 0) { 
                 result = result * table[i] / 1e36;
@@ -150,7 +150,8 @@ contract FeeCollector is Ownable, BalanceAccounting {
         uint256 currentEpoch = _token.currentEpoch;
 
         uint256 fee = _token.epochBalance[currentEpoch].totalSupply;
-        lastValueToken[msg.sender] = priceForTime(block.timestamp, msg.sender) * (fee + amount) / (fee == 0 ? 1 : fee);
+        tokenInfo[IERC20(msg.sender)].lastPriceValue = priceForTime(block.timestamp, IERC20(msg.sender)) * (fee + amount) / (fee == 0 ? 1 : fee);
+        tokenInfo[IERC20(msg.sender)].lastTime = block.timestamp;
 
         // Add new reward to current epoch
         _token.epochBalance[currentEpoch].balances[referral] = _token.epochBalance[currentEpoch].balances[referral].add(amount);
@@ -160,66 +161,63 @@ contract FeeCollector is Ownable, BalanceAccounting {
         _collectProcessedEpochs(referral, _token, currentEpoch);
     }
 
-    // function freezeEpoch(Mooniswap mooniswap) external nonReentrant validPool(mooniswap) validSpread(mooniswap) {
-    //     TokenInfo storage token = tokenInfo[mooniswap];
-    //     uint256 currentEpoch = token.currentEpoch;
-    //     require(token.firstUnprocessedEpoch == currentEpoch, "Previous epoch is not finalized");
+    function trade(IERC20 erc20, uint256 amount) external {
+        // TokenInfo storage _token = tokenInfo[erc20];
+        // uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
+        // EpochBalance storage epochBalance = _token.epochBalance[firstUnprocessedEpoch];
 
-    //     IERC20[] memory tokens = mooniswap.getTokens();
-    //     uint256 token0Balance = tokens[0].uniBalanceOf(address(this));
-    //     uint256 token1Balance = tokens[1].uniBalanceOf(address(this));
-    //     mooniswap.withdraw(mooniswap.balanceOf(address(this)), new uint256[](0));
-    //     token.epochBalance[currentEpoch].token0Balance = tokens[0].uniBalanceOf(address(this)).sub(token0Balance);
-    //     token.epochBalance[currentEpoch].token1Balance = tokens[1].uniBalanceOf(address(this)).sub(token1Balance);
-    //     token.currentEpoch = currentEpoch.add(1);
-    // }
+        // uint256 returnAmount = 0;
 
-    // function trade(Mooniswap mooniswap, IERC20[] memory path) external nonReentrant validPool(mooniswap) validPath(path) {
-    //     TokenInfo storage token = tokenInfo[mooniswap];
-    //     uint256 firstUnprocessedEpoch = token.firstUnprocessedEpoch;
-    //     EpochBalance storage epochBalance = token.epochBalance[firstUnprocessedEpoch];
-    //     require(firstUnprocessedEpoch.add(1) == token.currentEpoch, "Prev epoch already finalized");
+        // if (firstUnprocessedEpoch < _token.currentEpoch) {
+        //     uint256 _price = price(address(erc20));
 
-    //     IERC20[] memory tokens = mooniswap.getTokens();
-    //     uint256 availableBalance;
-    //     if (path[0] == tokens[0]) {
-    //         availableBalance = epochBalance.token0Balance;
-    //     } else if (path[0] == tokens[1]) {
-    //         availableBalance = epochBalance.token1Balance;
-    //     } else {
-    //         revert("Invalid first token");
-    //     }
+        //     if (_price >= amount) {
+        //         returnAmount = returnAmount + amount.mul(epochBalance.totalSupply).div(_price);
+        //     } else {
 
-    //     (uint256 amount, uint256 returnAmount) = _maxAmountForSwap(path, availableBalance);
-    //     if (returnAmount == 0) {
-    //         // get rid of dust
-    //         if (availableBalance > 0) {
-    //             require(availableBalance == amount, "availableBalance is not dust");
-    //             for (uint256 i = 0; i + 1 < path.length; i += 1) {
-    //                 Mooniswap _mooniswap = mooniswapFactory.pools(path[i], path[i+1]);
-    //                 require(_validateSpread(_mooniswap), "Spread is too high");
-    //             }
-    //             if (path[0].isETH()) {
-    //                 tx.origin.transfer(availableBalance);  // solhint-disable-line avoid-tx-origin
-    //             } else {
-    //                 path[0].safeTransfer(address(mooniswap), availableBalance);
-    //             }
-    //         }
-    //     } else {
-    //         uint256 receivedAmount = _swap(path, amount, payable(address(this)));
-    //         epochBalance.inchBalance = epochBalance.inchBalance.add(receivedAmount);
-    //     }
+        //     }
+        // }
 
-    //     if (path[0] == tokens[0]) {
-    //         epochBalance.token0Balance = epochBalance.token0Balance.sub(amount);
-    //     } else {
-    //         epochBalance.token1Balance = epochBalance.token1Balance.sub(amount);
-    //     }
+        // erc20.transferFrom(msg.sender, address(this), amount); 
+        // token.transfer(msg.sender, tokenAmount);              
 
-    //     if (epochBalance.token0Balance == 0 && epochBalance.token1Balance == 0) {
-    //         token.firstUnprocessedEpoch = firstUnprocessedEpoch.add(1);
-    //     }
-    // }
+        // epochBalance.totalSupply = epochBalance.totalSupply.sub(tokenAmount);
+        // epochBalance.inchBalance = epochBalance.inchBalance.add(amount);
+        
+
+        // uint256 availableBalance = epochBalance.totalSupply;
+        
+
+        // (uint256 amount, uint256 returnAmount) = _maxAmountForSwap(path, availableBalance);
+        // if (returnAmount == 0) {
+        //     // get rid of dust
+        //     if (availableBalance > 0) {
+        //         require(availableBalance == amount, "availableBalance is not dust");
+        //         for (uint256 i = 0; i + 1 < path.length; i += 1) {
+        //             Mooniswap _mooniswap = mooniswapFactory.pools(path[i], path[i+1]);
+        //             require(_validateSpread(_mooniswap), "Spread is too high");
+        //         }
+        //         if (path[0].isETH()) {
+        //             tx.origin.transfer(availableBalance);  // solhint-disable-line avoid-tx-origin
+        //         } else {
+        //             path[0].safeTransfer(address(mooniswap), availableBalance);
+        //         }
+        //     }
+        // } else {
+        //     uint256 receivedAmount = _swap(path, amount, payable(address(this)));
+        //     epochBalance.inchBalance = epochBalance.inchBalance.add(receivedAmount);
+        // }
+
+        // if (path[0] == tokens[0]) {
+        //     epochBalance.token0Balance = epochBalance.token0Balance.sub(amount);
+        // } else {
+        //     epochBalance.token1Balance = epochBalance.token1Balance.sub(amount);
+        // }
+
+        // if (epochBalance.token0Balance == 0 && epochBalance.token1Balance == 0) {
+        //     token.firstUnprocessedEpoch = firstUnprocessedEpoch.add(1);
+        // }
+    }
 
     // function claim(Mooniswap[] memory pools) external {
     //     UserInfo storage user = userInfo[msg.sender];
