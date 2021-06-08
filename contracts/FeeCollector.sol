@@ -322,6 +322,22 @@ contract FeeCollector is Ownable, BalanceAccounting {
             _token.epochBalance[epoch].inchBalance = inchBalance.sub(collected);
         }
     }
+
+    function getUserEpochBalance(address user, IERC20 _token, uint256 epoch) external view returns(uint256) {
+        return tokenInfo[_token].epochBalance[epoch].balances[user];
+    }
+
+    function getTotalSupplyEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256) {
+        return tokenInfo[_token].epochBalance[epoch].totalSupply;
+    }
+
+    function getInchBalanceEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256) {
+        return tokenInfo[_token].epochBalance[epoch].inchBalance;
+    }
+
+    function getFirstUserUnprocessedEpoch(address user, IERC20 _token) external view returns(uint256) {
+        return tokenInfo[_token].firstUserUnprocessedEpoch[user];
+    } 
 }
 
 
