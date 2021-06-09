@@ -38,6 +38,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
     struct EpochBalance {
         mapping(address => uint256) balances;
         uint256 totalSupply;
+        uint256 tokenBalance;
         uint256 inchBalance;
     }
 
@@ -51,7 +52,6 @@ contract FeeCollector is Ownable, BalanceAccounting {
     }
 
     mapping(IERC20 => TokenInfo) public tokenInfo;
-    mapping(address => mapping(address => uint256)) public tokenBalance;
     mapping(address => uint256) public balance;
 
     uint256 public minValue;
@@ -156,67 +156,50 @@ contract FeeCollector is Ownable, BalanceAccounting {
         // Add new reward to current epoch
         _token.epochBalance[currentEpoch].balances[referral] = _token.epochBalance[currentEpoch].balances[referral].add(amount);
         _token.epochBalance[currentEpoch].totalSupply = _token.epochBalance[currentEpoch].totalSupply.add(amount);
+        _token.epochBalance[currentEpoch].tokenBalance = _token.epochBalance[currentEpoch].tokenBalance.add(amount);
 
         // Collect all processed epochs and advance user token epoch
         _collectProcessedEpochs(referral, _token, currentEpoch);
     }
 
     function trade(IERC20 erc20, uint256 amount) external {
-        // TokenInfo storage _token = tokenInfo[erc20];
-        // uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
-        // EpochBalance storage epochBalance = _token.epochBalance[firstUnprocessedEpoch];
+        TokenInfo storage _token = tokenInfo[erc20];
+        uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
+        EpochBalance storage epochBalance = _token.epochBalance[firstUnprocessedEpoch];
+        EpochBalance storage currentEpochBalance = _token.epochBalance[_token.currentEpoch];
 
-        // uint256 returnAmount = 0;
+        uint256 _price = price(erc20);
+        uint256 returnAmount = amount.div(_price);
 
-        // if (firstUnprocessedEpoch < _token.currentEpoch) {
-        //     uint256 _price = price(address(erc20));
+        if (_token.firstUnprocessedEpoch == _token.currentEpoch) {
+            _token.currentEpoch = _token.currentEpoch.add(1);
+        }
 
-        //     if (_price >= amount) {
-        //         returnAmount = returnAmount + amount.mul(epochBalance.totalSupply).div(_price);
-        //     } else {
+        if (returnAmount <= epochBalance.tokenBalance) {
+            if (returnAmount == epochBalance.tokenBalance) {
+                _token.firstUnprocessedEpoch = firstUnprocessedEpoch.add(1);
+            }
 
-        //     }
-        // }
+            epochBalance.tokenBalance = epochBalance.tokenBalance.sub(returnAmount);
+            epochBalance.inchBalance = epochBalance.inchBalance.add(amount);
+        } else {
+            require(firstUnprocessedEpoch.add(1) == _token.currentEpoch, "not enough tokens");
+            require(epochBalance.tokenBalance + currentEpochBalance.tokenBalance >= returnAmount, "not enough tokens");
 
-        // erc20.transferFrom(msg.sender, address(this), amount); 
-        // token.transfer(msg.sender, tokenAmount);              
+            uint256 amountPart = epochBalance.tokenBalance.mul(amount).div(returnAmount);
+            
+            currentEpochBalance.tokenBalance = currentEpochBalance.tokenBalance.sub(returnAmount.sub(epochBalance.tokenBalance));
+            currentEpochBalance.inchBalance = currentEpochBalance.inchBalance.add(amount.sub(amountPart));
 
-        // epochBalance.totalSupply = epochBalance.totalSupply.sub(tokenAmount);
-        // epochBalance.inchBalance = epochBalance.inchBalance.add(amount);
-        
+            epochBalance.tokenBalance = 0;
+            epochBalance.inchBalance = epochBalance.inchBalance.add(amountPart);
 
-        // uint256 availableBalance = epochBalance.totalSupply;
-        
+            _token.firstUnprocessedEpoch = firstUnprocessedEpoch.add(1);
+            _token.currentEpoch = _token.currentEpoch.add(1);
+        }
 
-        // (uint256 amount, uint256 returnAmount) = _maxAmountForSwap(path, availableBalance);
-        // if (returnAmount == 0) {
-        //     // get rid of dust
-        //     if (availableBalance > 0) {
-        //         require(availableBalance == amount, "availableBalance is not dust");
-        //         for (uint256 i = 0; i + 1 < path.length; i += 1) {
-        //             Mooniswap _mooniswap = mooniswapFactory.pools(path[i], path[i+1]);
-        //             require(_validateSpread(_mooniswap), "Spread is too high");
-        //         }
-        //         if (path[0].isETH()) {
-        //             tx.origin.transfer(availableBalance);  // solhint-disable-line avoid-tx-origin
-        //         } else {
-        //             path[0].safeTransfer(address(mooniswap), availableBalance);
-        //         }
-        //     }
-        // } else {
-        //     uint256 receivedAmount = _swap(path, amount, payable(address(this)));
-        //     epochBalance.inchBalance = epochBalance.inchBalance.add(receivedAmount);
-        // }
-
-        // if (path[0] == tokens[0]) {
-        //     epochBalance.token0Balance = epochBalance.token0Balance.sub(amount);
-        // } else {
-        //     epochBalance.token1Balance = epochBalance.token1Balance.sub(amount);
-        // }
-
-        // if (epochBalance.token0Balance == 0 && epochBalance.token1Balance == 0) {
-        //     token.firstUnprocessedEpoch = firstUnprocessedEpoch.add(1);
-        // }
+        erc20.transferFrom(msg.sender, address(this), amount);
+        token.transfer(msg.sender, returnAmount);              
     }
 
     // function claim(Mooniswap[] memory pools) external {
@@ -327,6 +310,10 @@ contract FeeCollector is Ownable, BalanceAccounting {
 
     function getTotalSupplyEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256) {
         return tokenInfo[_token].epochBalance[epoch].totalSupply;
+    }
+
+    function getTokenBalanceEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256) {
+        return tokenInfo[_token].epochBalance[epoch].tokenBalance;
     }
 
     function getInchBalanceEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256) {
