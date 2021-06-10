@@ -149,7 +149,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
         TokenInfo storage _token = tokenInfo[erc20];
         uint256 currentEpoch = _token.currentEpoch;
 
-        uint256 fee = _token.epochBalance[currentEpoch].totalSupply;
+        uint256 fee = _token.epochBalance[currentEpoch].tokenBalance;
         tokenInfo[IERC20(msg.sender)].lastPriceValue = priceForTime(block.timestamp, IERC20(msg.sender)) * (fee + amount) / (fee == 0 ? 1 : fee);
         tokenInfo[IERC20(msg.sender)].lastTime = block.timestamp;
 
@@ -198,25 +198,28 @@ contract FeeCollector is Ownable, BalanceAccounting {
             _token.currentEpoch = _token.currentEpoch.add(1);
         }
 
-        erc20.transferFrom(msg.sender, address(this), amount);
-        token.transfer(msg.sender, returnAmount);              
+        // uint256 fee = _token.epochBalance[_token.currentEpoch].tokenBalance;
+        // _token.lastPriceValue = priceForTime(block.timestamp, erc20) * (fee - returnAmount) / (fee == 0 ? 1 : fee);
+        // _token.lastTime = block.timestamp;
+
+        token.transferFrom(msg.sender, address(this), amount);
+        erc20.transfer(msg.sender, returnAmount);              
     }
 
-    // function claim(Mooniswap[] memory pools) external {
-    //     UserInfo storage user = userInfo[msg.sender];
-    //     for (uint256 i = 0; i < pools.length; ++i) {
-    //         Mooniswap mooniswap = pools[i];
-    //         TokenInfo storage token = tokenInfo[mooniswap];
-    //         _collectProcessedEpochs(user, token, mooniswap, token.currentEpoch);
-    //     }
+    function claim(IERC20[] memory pools) external {
+        for (uint256 i = 0; i < pools.length; ++i) {
+            IERC20 erc20 = pools[i];
+            TokenInfo storage _token = tokenInfo[erc20];
+            _collectProcessedEpochs(msg.sender, _token, _token.currentEpoch);
+        }
 
-    //     uint256 balance = user.balance;
-    //     if (balance > 1) {
-    //         // Avoid erasing storage to decrease gas footprint for referral payments
-    //         user.balance = 1;
-    //         inchToken.transfer(msg.sender, balance - 1);
-    //     }
-    // }
+        uint256 userBalance = balance[msg.sender];
+        if (userBalance > 1) {
+            // Avoid erasing storage to decrease gas footprint for referral payments
+            balance[msg.sender] = 1;
+            token.transfer(msg.sender, userBalance - 1);
+        }
+    }
 
     // function claimCurrentEpoch(Mooniswap mooniswap) external nonReentrant validPool(mooniswap) {
     //     TokenInfo storage token = tokenInfo[mooniswap];
