@@ -162,6 +162,25 @@ contract FeeCollector is Ownable, BalanceAccounting {
         _collectProcessedEpochs(referral, _token, currentEpoch);
     }
 
+    function updateRewardNonLP(IERC20 erc20, address referral, uint256 amount) public {
+        erc20.transferFrom(msg.sender, address(this), amount);
+
+        TokenInfo storage _token = tokenInfo[erc20];
+        uint256 currentEpoch = _token.currentEpoch;
+
+        uint256 fee = _token.epochBalance[currentEpoch].tokenBalance;
+        tokenInfo[erc20].lastPriceValue = priceForTime(block.timestamp, erc20) * (fee + amount) / (fee == 0 ? 1 : fee);
+        tokenInfo[erc20].lastTime = block.timestamp;
+
+        // Add new reward to current epoch
+        _token.epochBalance[currentEpoch].balances[referral] = _token.epochBalance[currentEpoch].balances[referral].add(amount);
+        _token.epochBalance[currentEpoch].totalSupply = _token.epochBalance[currentEpoch].totalSupply.add(amount);
+        _token.epochBalance[currentEpoch].tokenBalance = _token.epochBalance[currentEpoch].tokenBalance.add(amount);
+
+        // Collect all processed epochs and advance user token epoch
+        _collectProcessedEpochs(referral, _token, currentEpoch);
+    }
+
     function trade(IERC20 erc20, uint256 amount) external {
         TokenInfo storage _token = tokenInfo[erc20];
         uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;

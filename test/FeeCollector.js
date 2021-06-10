@@ -312,6 +312,151 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
         });
     });
 
+    describe('updateRewardNonLP', async function () {
+        it('lastTokenPriceValue changes', async function () {
+            let reward = toBN(100);
+
+            const tokenInfo1 = await this.feeCollector.tokenInfo.call(this.weth.address);
+            expect(tokenInfo1.lastPriceValue.toString()).equal("0");
+
+            await this.feeCollector.updateRewardNonLP(this.weth.address, wallet, reward, { 'from': wallet });
+
+            const tokenInfo2 = await this.feeCollector.tokenInfo.call(this.weth.address);
+            expect(tokenInfo2.lastPriceValue.toString()).equal(toBN(minValue).mul(reward).toString());
+        });
+
+        it('lastTokenTime changes', async function () {
+            let reward = toBN(100);
+
+            const tokenInfo1 = await this.feeCollector.tokenInfo.call(this.weth.address);
+            const lastTIme1 = tokenInfo1.lastTime;
+
+            await this.feeCollector.updateRewardNonLP(this.weth.address, wallet, reward, { 'from': wallet });
+
+            const tokenInfo2 = await this.feeCollector.tokenInfo.call(this.weth.address);
+            const lastTIme2 = tokenInfo2.lastTime;
+            expect(lastTIme2 > lastTIme1).equal(true);
+        });
+
+        it('tokenInfo after reward', async function () {
+            let reward = toBN(100);
+
+            const tokenInfo1 = await getTokenInfo(this.feeCollector, this.weth.address, wallet, 0);
+            
+            expect(tokenInfo1.epochBalance.userBalance.toString()).equal("0");
+            expect(tokenInfo1.epochBalance.totalSupply.toString()).equal("0");
+            expect(tokenInfo1.epochBalance.tokenBalance.toString()).equal("0");
+            expect(tokenInfo1.epochBalance.inchBalance.toString()).equal("0");
+            expect(tokenInfo1.firstUserUnprocessedEpoch.toString()).equal("0");
+            
+            await this.feeCollector.updateRewardNonLP(this.weth.address, wallet, reward, { 'from': wallet });
+
+            const tokenInfo2 = await getTokenInfo(this.feeCollector, this.weth.address, wallet, 0);
+
+            expect(tokenInfo2.epochBalance.userBalance.toString()).equal(reward.toString());
+            expect(tokenInfo2.epochBalance.totalSupply.toString()).equal(reward.toString());
+            expect(tokenInfo2.epochBalance.tokenBalance.toString()).equal(reward.toString());
+            expect(tokenInfo2.epochBalance.inchBalance.toString()).equal("0");
+            expect(tokenInfo2.firstUserUnprocessedEpoch.toString()).equal("0");
+        });
+
+        it('tokenInfo after the freezing epoch', async function () {
+            let reward = toBN(100);
+
+            await this.feeCollector.updateRewardNonLP(this.weth.address, wallet, reward, { 'from': wallet });
+
+            const price = await this.feeCollector.price.call(this.weth.address);
+            const tokenInfo1 = await getTokenInfo(this.feeCollector, this.weth.address, wallet, 0);
+
+            expect(tokenInfo1.epochBalance.userBalance.toString()).equal(reward.toString());
+            expect(tokenInfo1.epochBalance.totalSupply.toString()).equal(reward.toString());
+            expect(tokenInfo1.epochBalance.tokenBalance.toString()).equal(reward.toString());
+            expect(tokenInfo1.epochBalance.inchBalance.toString()).equal("0");
+            expect(tokenInfo1.firstUserUnprocessedEpoch.toString()).equal("0");
+
+            const returnAmount = toBN(10);
+            const amount = price.mul(returnAmount);
+
+            await this.feeCollector.trade(this.weth.address, amount, { 'from': wallet2 });
+            await this.feeCollector.updateRewardNonLP(this.weth.address, wallet, reward, { 'from': wallet });
+
+            const tokenInfo2_epoch0 = await getTokenInfo(this.feeCollector, this.weth.address, wallet, 0);
+
+            expect(tokenInfo2_epoch0.epochBalance.userBalance.toString()).equal(reward.toString());
+            expect(tokenInfo2_epoch0.epochBalance.totalSupply.toString()).equal(reward.toString());
+            expect(tokenInfo2_epoch0.epochBalance.tokenBalance.toString()).equal(reward.sub(returnAmount).toString());
+            expect(tokenInfo2_epoch0.epochBalance.inchBalance.toString()).equal(amount.toString());
+            expect(tokenInfo2_epoch0.firstUnprocessedEpoch.toString()).equal("0");
+
+            const tokenInfo2_epoch1 = await getTokenInfo(this.feeCollector, this.weth.address, wallet, 1);
+
+            expect(tokenInfo2_epoch1.epochBalance.userBalance.toString()).equal(reward.toString());
+            expect(tokenInfo2_epoch1.epochBalance.totalSupply.toString()).equal(reward.toString());
+            expect(tokenInfo2_epoch1.epochBalance.tokenBalance.toString()).equal(reward.toString());
+            expect(tokenInfo2_epoch1.epochBalance.inchBalance.toString()).equal("0");
+            expect(tokenInfo2_epoch1.firstUserUnprocessedEpoch.toString()).equal("0");
+        });
+
+        it('tokenInfo after epoch sellout', async function () {
+            let reward = toBN(100);
+
+            await this.feeCollector.updateRewardNonLP(this.weth.address, wallet, reward, { 'from': wallet });
+
+            const price = await this.feeCollector.price.call(this.weth.address);
+            const tokenInfo1 = await getTokenInfo(this.feeCollector, this.weth.address, wallet, 0);
+            
+            expect(tokenInfo1.epochBalance.userBalance.toString()).equal(reward.toString());
+            expect(tokenInfo1.epochBalance.totalSupply.toString()).equal(reward.toString());
+            expect(tokenInfo1.epochBalance.tokenBalance.toString()).equal(reward.toString());
+            expect(tokenInfo1.epochBalance.inchBalance.toString()).equal("0");
+            expect(tokenInfo1.firstUserUnprocessedEpoch.toString()).equal("0");
+            
+            const returnAmount = toBN(100);
+            const amount = price.mul(returnAmount);
+
+            await this.feeCollector.trade(this.weth.address, amount, { 'from': wallet2 });
+            await this.feeCollector.updateRewardNonLP(this.weth.address, wallet, reward, { 'from': wallet });
+
+            const tokenInfo2_epoch0 = await getTokenInfo(this.feeCollector, this.weth.address, wallet, 0);
+            
+            expect(tokenInfo2_epoch0.epochBalance.userBalance.toString()).equal("0");
+            expect(tokenInfo2_epoch0.epochBalance.totalSupply.toString()).equal("0");
+            expect(tokenInfo2_epoch0.epochBalance.tokenBalance.toString()).equal("0");
+            expect(tokenInfo2_epoch0.epochBalance.inchBalance.toString()).equal("0");
+            expect(tokenInfo2_epoch0.firstUnprocessedEpoch.toString()).equal("1");
+
+            const tokenInfo2_epoch1 = await getTokenInfo(this.feeCollector, this.weth.address, wallet, 1);
+
+            expect(tokenInfo2_epoch1.epochBalance.userBalance.toString()).equal(reward.toString());
+            expect(tokenInfo2_epoch1.epochBalance.totalSupply.toString()).equal(reward.toString());
+            expect(tokenInfo2_epoch1.epochBalance.tokenBalance.toString()).equal(reward.toString());
+            expect(tokenInfo2_epoch1.epochBalance.inchBalance.toString()).equal("0");
+            expect(tokenInfo2_epoch1.firstUserUnprocessedEpoch.toString()).equal("1");
+        });
+
+        it('balance after epoch sellout', async function () {
+            let reward = toBN(100);
+
+            await this.feeCollector.updateRewardNonLP(this.weth.address, wallet, reward, { 'from': wallet });
+
+            const price = await this.feeCollector.price.call(this.weth.address);
+            const balance1 = await this.feeCollector.balance.call(wallet);
+            
+            expect(balance1.toString()).equal("0");
+
+            const returnAmount = toBN(100);
+            const amount = price.mul(returnAmount);
+
+            await this.feeCollector.trade(this.weth.address, amount, { 'from': wallet2 });
+            await this.feeCollector.updateRewardNonLP(this.weth.address, wallet, reward, { 'from': wallet });
+
+            const tokenInfo2_epoch0 = await getTokenInfo(this.feeCollector, this.weth.address, wallet, 0);
+            const balance2 = await this.feeCollector.balance.call(wallet);
+
+            expect(balance2.toString()).equal(amount.toString());
+        });
+    });
+
     describe('trade', async function () {
         it('tokenInfo after trade part of only frozen epoch', async function () {
             let reward = toBN("100");
