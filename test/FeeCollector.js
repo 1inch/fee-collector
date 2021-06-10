@@ -62,11 +62,12 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
     const decelerationBN = toBN(deceleration);
 
     before(async function () {
-        this.weth = await TokenMock.new('WETH', 'WETH');
-        this.token = await TokenMock.new('INCH', 'INCH');
     });
 
     beforeEach(async function () {
+        this.weth = await TokenMock.new('WETH', 'WETH');
+        this.token = await TokenMock.new('INCH', 'INCH');
+
         this.feeCollector = await FeeCollector.new(this.token.address, minValue, deceleration);
 
         await this.weth.mint(wallet, ether('1000000'));
@@ -517,6 +518,53 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
             expect(balance1).to.be.bignumber.equal('0');
             expect(balance2).to.be.bignumber.equal(amount.sub(toBN(1)));
         });
+
+        it('claimCurrentEpoch when firstUnprocessedEpoch is equal to currentEpoch', async function () {
+            const reward = toBN("10");
+            const balance1 = await this.weth.balanceOf.call(wallet2);
+
+            expect(balance1).to.be.bignumber.equal('0');
+            
+            await this.weth.updateReward(this.feeCollector.address, wallet2, reward, { 'from': wallet });
+            await this.feeCollector.claimCurrentEpoch(this.weth.address, { 'from': wallet2 });
+            
+            const balance2 = await this.weth.balanceOf.call(wallet2);
+
+            expect(balance2).to.be.bignumber.equal(reward);
+        });
+
+        it('claimCurrentEpoch when firstUnprocessedEpoch is not equal to currentEpoch', async function () {
+            const reward = toBN("10");
+            
+            const balance_weth_1 = await this.weth.balanceOf.call(wallet);
+            const balance_token_1 = await this.token.balanceOf.call(wallet);
+            expect(balance_token_1).to.be.bignumber.equal('0');
+
+            await this.weth.updateReward(this.feeCollector.address, wallet, reward, { 'from': wallet });
+
+            const balance_weth_2 = await this.weth.balanceOf.call(wallet);
+            const balance_token_2 = await this.token.balanceOf.call(wallet);
+            expect(balance_weth_2).to.be.bignumber.equal(balance_weth_1.sub(reward));
+            expect(balance_token_2).to.be.bignumber.equal('0');
+
+            const price = await this.feeCollector.price.call(this.weth.address);
+            const amount = price.mul(reward.divn(2));
+            await this.feeCollector.trade(this.weth.address, amount, { 'from': wallet2 });
+            await this.weth.updateReward(this.feeCollector.address, wallet, reward, { 'from': wallet });
+
+            const balance_weth_3 = await this.weth.balanceOf.call(wallet);
+            const balance_token_3 = await this.token.balanceOf.call(wallet);
+            expect(balance_weth_3).to.be.bignumber.equal(balance_weth_2.sub(reward));
+            expect(balance_token_3).to.be.bignumber.equal('0');
+
+            await this.feeCollector.claimCurrentEpoch(this.weth.address, { 'from': wallet });
+            
+            const balance_weth_4 = await this.weth.balanceOf.call(wallet);
+            const balance_token_4 = await this.token.balanceOf.call(wallet);
+            expect(balance_weth_4).to.be.bignumber.equal(balance_weth_3.add(reward));
+            expect(balance_token_4).to.be.bignumber.equal('0');
+        });
+        
     });
 
     describe('Something', async function () {

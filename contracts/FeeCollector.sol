@@ -221,17 +221,17 @@ contract FeeCollector is Ownable, BalanceAccounting {
         }
     }
 
-    // function claimCurrentEpoch(Mooniswap mooniswap) external nonReentrant validPool(mooniswap) {
-    //     TokenInfo storage token = tokenInfo[mooniswap];
-    //     UserInfo storage user = userInfo[msg.sender];
-    //     uint256 currentEpoch = token.currentEpoch;
-    //     uint256 balance = user.share[mooniswap][currentEpoch];
-    //     if (balance > 0) {
-    //         user.share[mooniswap][currentEpoch] = 0;
-    //         token.epochBalance[currentEpoch].totalSupply = token.epochBalance[currentEpoch].totalSupply.sub(balance);
-    //         mooniswap.transfer(msg.sender, balance);
-    //     }
-    // }
+    function claimCurrentEpoch(IERC20 erc20) external {
+        TokenInfo storage _token = tokenInfo[erc20];
+        uint256 currentEpoch = _token.currentEpoch;
+        uint256 userBalance = _token.epochBalance[currentEpoch].balances[msg.sender];
+        if (userBalance > 0) {
+            _token.epochBalance[currentEpoch].balances[msg.sender] = 0;
+            _token.epochBalance[currentEpoch].totalSupply = _token.epochBalance[currentEpoch].totalSupply.sub(userBalance);
+            _token.epochBalance[currentEpoch].tokenBalance = _token.epochBalance[currentEpoch].tokenBalance.sub(userBalance);
+            erc20.transfer(msg.sender, userBalance);
+        }
+    }
 
     // function claimFrozenEpoch(Mooniswap mooniswap) external nonReentrant validPool(mooniswap) {
     //     TokenInfo storage token = tokenInfo[mooniswap];
