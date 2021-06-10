@@ -217,6 +217,8 @@ contract FeeCollector is Ownable, BalanceAccounting {
         if (userBalance > 1) {
             // Avoid erasing storage to decrease gas footprint for referral payments
             balance[msg.sender] = 1;
+            _burn(msg.sender, userBalance);
+            _mint(msg.sender, 1);
             token.transfer(msg.sender, userBalance - 1);
         }
     }
@@ -284,6 +286,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
             collected = collected.add(_collectEpoch(user, _token, userEpoch + 1));
         }
         balance[user] = balance[user].add(collected);
+        _mint(user, collected);
 
         // Update user token epoch counter
         bool emptySecondEpoch = _token.epochBalance[userEpoch + 1].balances[user] == 0;

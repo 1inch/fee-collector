@@ -648,6 +648,32 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
         });
     });
 
+    describe('ERC-20 like interface for balance accounting', async function () {
+        it('mint and burn', async function () {
+            const reward = toBN("10");
+            
+            // mint
+            await this.weth.updateReward(this.feeCollector.address, wallet, reward, { 'from': wallet });
+
+            const price = await this.feeCollector.price.call(this.weth.address);
+            const amount = price.mul(reward);
+            
+            await this.feeCollector.trade(this.weth.address, amount, { 'from': wallet2 });
+            await this.weth.updateReward(this.feeCollector.address, wallet, reward, { 'from': wallet });
+
+            const balance = await this.feeCollector.balanceOf(wallet);
+            
+            expect(balance).to.be.bignumber.equal(amount);
+
+            // burn
+            await this.feeCollector.claim([this.token.address], { 'from': wallet });
+
+            const balance2 = await this.feeCollector.balanceOf(wallet);
+
+            expect(balance2).to.be.bignumber.equal('1');
+        });
+    });
+
     describe('Something', async function () {
         it('Anything', async function () {
             expect(true).equal(true);
