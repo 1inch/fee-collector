@@ -233,38 +233,35 @@ contract FeeCollector is Ownable, BalanceAccounting {
         }
     }
 
-    // function claimFrozenEpoch(Mooniswap mooniswap) external nonReentrant validPool(mooniswap) {
-    //     TokenInfo storage token = tokenInfo[mooniswap];
-    //     UserInfo storage user = userInfo[msg.sender];
-    //     uint256 firstUnprocessedEpoch = token.firstUnprocessedEpoch;
-    //     uint256 currentEpoch = token.currentEpoch;
+    function claimFrozenEpoch(IERC20 erc20) external {
+        TokenInfo storage _token = tokenInfo[erc20];
+        uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
+        uint256 currentEpoch = _token.currentEpoch;
 
-    //     require(firstUnprocessedEpoch.add(1) == currentEpoch, "Epoch already finalized");
-    //     require(user.firstUnprocessedEpoch[mooniswap] == firstUnprocessedEpoch, "Epoch funds already claimed");
+        require(firstUnprocessedEpoch.add(1) == currentEpoch, "Epoch already finalized");
+        require(_token.firstUserUnprocessedEpoch[msg.sender] == firstUnprocessedEpoch, "Epoch funds already claimed");
 
-    //     user.firstUnprocessedEpoch[mooniswap] = currentEpoch;
-    //     uint256 share = user.share[mooniswap][firstUnprocessedEpoch];
+        _token.firstUserUnprocessedEpoch[msg.sender] = currentEpoch;
+        uint256 share = _token.epochBalance[firstUnprocessedEpoch].balances[msg.sender];
 
-    //     if (share > 0) {
-    //         EpochBalance storage epochBalance = token.epochBalance[firstUnprocessedEpoch];
-    //         uint256 totalSupply = epochBalance.totalSupply;
-    //         user.share[mooniswap][firstUnprocessedEpoch] = 0;
-    //         epochBalance.totalSupply = totalSupply.sub(share);
+        if (share > 0) {
+            EpochBalance storage epochBalance = _token.epochBalance[firstUnprocessedEpoch];
+            uint256 totalSupply = epochBalance.totalSupply;
+            _token.epochBalance[firstUnprocessedEpoch].balances[msg.sender] = 0;
+            epochBalance.totalSupply = totalSupply.sub(share);
 
-    //         IERC20[] memory tokens = mooniswap.getTokens();
-    //         epochBalance.token0Balance = _transferTokenShare(tokens[0], epochBalance.token0Balance, share, totalSupply);
-    //         epochBalance.token1Balance = _transferTokenShare(tokens[1], epochBalance.token1Balance, share, totalSupply);
-    //         epochBalance.inchBalance = _transferTokenShare(inchToken, epochBalance.inchBalance, share, totalSupply);
-    //     }
-    // }
+            epochBalance.tokenBalance = _transferTokenShare(erc20, epochBalance.tokenBalance, share, totalSupply);
+            epochBalance.inchBalance = _transferTokenShare(token, epochBalance.inchBalance, share, totalSupply);
+        }
+    }
 
-    // function _transferTokenShare(IERC20 token, uint256 balance, uint256 share, uint256 totalSupply) private returns(uint256 newBalance) {
-    //     uint256 amount = balance.mul(share).div(totalSupply);
-    //     if (amount > 0) {
-    //         token.uniTransfer(msg.sender, amount);
-    //     }
-    //     return balance.sub(amount);
-    // }
+    function _transferTokenShare(IERC20 _token, uint256 _balance, uint256 share, uint256 totalSupply) private returns(uint256 newBalance) {
+        uint256 amount = _balance.mul(share).div(totalSupply);
+        if (amount > 0) {
+            _token.uniTransfer(payable(msg.sender), amount);
+        }
+        return _balance.sub(amount);
+    }
 
     function _collectProcessedEpochs(address user, TokenInfo storage _token, uint256 currentEpoch) private {
         uint256 userEpoch = _token.firstUserUnprocessedEpoch[user];
