@@ -3,14 +3,12 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import "./libraries/UniERC20.sol";
 import "./utils/BalanceAccounting.sol";
 
 
 contract FeeCollector is Ownable, BalanceAccounting {
-    using SafeMath for uint256;
     using UniERC20 for IERC20;
 
     IERC20 public immutable token;
@@ -152,9 +150,9 @@ contract FeeCollector is Ownable, BalanceAccounting {
         tokenInfo[IERC20(msg.sender)].lastTime = block.timestamp;
 
         // Add new reward to current epoch
-        _token.epochBalance[currentEpoch].balances[referral] = _token.epochBalance[currentEpoch].balances[referral].add(amount);
-        _token.epochBalance[currentEpoch].totalSupply = _token.epochBalance[currentEpoch].totalSupply.add(amount);
-        _token.epochBalance[currentEpoch].tokenBalance = _token.epochBalance[currentEpoch].tokenBalance.add(amount);
+        _token.epochBalance[currentEpoch].balances[referral] += amount;
+        _token.epochBalance[currentEpoch].totalSupply += amount;
+        _token.epochBalance[currentEpoch].tokenBalance += amount;
 
         // Collect all processed epochs and advance user token epoch
         _collectProcessedEpochs(referral, _token, currentEpoch);
@@ -171,9 +169,9 @@ contract FeeCollector is Ownable, BalanceAccounting {
         tokenInfo[erc20].lastTime = block.timestamp;
 
         // Add new reward to current epoch
-        _token.epochBalance[currentEpoch].balances[referral] = _token.epochBalance[currentEpoch].balances[referral].add(amount);
-        _token.epochBalance[currentEpoch].totalSupply = _token.epochBalance[currentEpoch].totalSupply.add(amount);
-        _token.epochBalance[currentEpoch].tokenBalance = _token.epochBalance[currentEpoch].tokenBalance.add(amount);
+        _token.epochBalance[currentEpoch].balances[referral] += amount;
+        _token.epochBalance[currentEpoch].totalSupply += amount;
+        _token.epochBalance[currentEpoch].tokenBalance += amount;
 
         // Collect all processed epochs and advance user token epoch
         _collectProcessedEpochs(referral, _token, currentEpoch);
@@ -186,33 +184,33 @@ contract FeeCollector is Ownable, BalanceAccounting {
         EpochBalance storage currentEpochBalance = _token.epochBalance[_token.currentEpoch];
 
         uint256 _price = price(erc20);
-        uint256 returnAmount = amount.div(_price);
+        uint256 returnAmount = amount / _price;
 
         if (_token.firstUnprocessedEpoch == _token.currentEpoch) {
-            _token.currentEpoch = _token.currentEpoch.add(1);
+            _token.currentEpoch += 1;
         }
 
         if (returnAmount <= epochBalance.tokenBalance) {
             if (returnAmount == epochBalance.tokenBalance) {
-                _token.firstUnprocessedEpoch = firstUnprocessedEpoch.add(1);
+                _token.firstUnprocessedEpoch += 1;
             }
 
-            epochBalance.tokenBalance = epochBalance.tokenBalance.sub(returnAmount);
-            epochBalance.inchBalance = epochBalance.inchBalance.add(amount);
+            epochBalance.tokenBalance -= returnAmount;
+            epochBalance.inchBalance += amount;
         } else {
-            require(firstUnprocessedEpoch.add(1) == _token.currentEpoch, "not enough tokens");
+            require(firstUnprocessedEpoch + 1 == _token.currentEpoch, "not enough tokens");
             require(epochBalance.tokenBalance + currentEpochBalance.tokenBalance >= returnAmount, "not enough tokens");
 
-            uint256 amountPart = epochBalance.tokenBalance.mul(amount).div(returnAmount);
+            uint256 amountPart = epochBalance.tokenBalance * amount / returnAmount;
 
-            currentEpochBalance.tokenBalance = currentEpochBalance.tokenBalance.sub(returnAmount.sub(epochBalance.tokenBalance));
-            currentEpochBalance.inchBalance = currentEpochBalance.inchBalance.add(amount.sub(amountPart));
+            currentEpochBalance.tokenBalance -= (returnAmount - epochBalance.tokenBalance);
+            currentEpochBalance.inchBalance += (amount - amountPart);
 
             epochBalance.tokenBalance = 0;
-            epochBalance.inchBalance = epochBalance.inchBalance.add(amountPart);
+            epochBalance.inchBalance += amountPart;
 
-            _token.firstUnprocessedEpoch = firstUnprocessedEpoch.add(1);
-            _token.currentEpoch = _token.currentEpoch.add(1);
+            _token.firstUnprocessedEpoch += 1;
+            _token.currentEpoch += 1;
         }
 
         // uint256 fee = _token.epochBalance[_token.currentEpoch].tokenBalance;
@@ -246,8 +244,8 @@ contract FeeCollector is Ownable, BalanceAccounting {
         uint256 userBalance = _token.epochBalance[currentEpoch].balances[msg.sender];
         if (userBalance > 0) {
             _token.epochBalance[currentEpoch].balances[msg.sender] = 0;
-            _token.epochBalance[currentEpoch].totalSupply = _token.epochBalance[currentEpoch].totalSupply.sub(userBalance);
-            _token.epochBalance[currentEpoch].tokenBalance = _token.epochBalance[currentEpoch].tokenBalance.sub(userBalance);
+            _token.epochBalance[currentEpoch].totalSupply -= userBalance;
+            _token.epochBalance[currentEpoch].tokenBalance -= userBalance;
             erc20.transfer(msg.sender, userBalance);
         }
     }
@@ -257,7 +255,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
         uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
         uint256 currentEpoch = _token.currentEpoch;
 
-        require(firstUnprocessedEpoch.add(1) == currentEpoch, "Epoch already finalized");
+        require(firstUnprocessedEpoch + 1 == currentEpoch, "Epoch already finalized");
         require(_token.firstUserUnprocessedEpoch[msg.sender] == firstUnprocessedEpoch, "Epoch funds already claimed");
 
         _token.firstUserUnprocessedEpoch[msg.sender] = currentEpoch;
@@ -267,18 +265,18 @@ contract FeeCollector is Ownable, BalanceAccounting {
         if (share > 0) {
             uint256 totalSupply = epochBalance.totalSupply;
             epochBalance.balances[msg.sender] = 0;
-            epochBalance.totalSupply = totalSupply.sub(share);
+            epochBalance.totalSupply = totalSupply - share;
             epochBalance.tokenBalance = _transferTokenShare(erc20, epochBalance.tokenBalance, share, totalSupply);
             epochBalance.inchBalance = _transferTokenShare(token, epochBalance.inchBalance, share, totalSupply);
         }
     }
 
-    function _transferTokenShare(IERC20 _token, uint256 _balance, uint256 share, uint256 totalSupply) private returns(uint256 newBalance) {
-        uint256 amount = _balance.mul(share).div(totalSupply);
+    function _transferTokenShare(IERC20 _token, uint256 balance, uint256 share, uint256 totalSupply) private returns(uint256 newBalance) {
+        uint256 amount = balance * share / totalSupply;
         if (amount > 0) {
             _token.uniTransfer(payable(msg.sender), amount);
         }
-        return _balance.sub(amount);
+        return balance - amount;
     }
 
     function _collectProcessedEpochs(address user, TokenInfo storage _token, uint256 currentEpoch) private {
@@ -299,7 +297,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
         // Claim 1 or 2 processed epochs for the user
         uint256 collected = _collectEpoch(user, _token, userEpoch);
         if (epochCount > 1) {
-            collected = collected.add(_collectEpoch(user, _token, userEpoch + 1));
+            collected += _collectEpoch(user, _token, userEpoch + 1);
         }
         _mint(user, collected);
 
@@ -314,11 +312,11 @@ contract FeeCollector is Ownable, BalanceAccounting {
             uint256 inchBalance = _token.epochBalance[epoch].inchBalance;
             uint256 totalSupply = _token.epochBalance[epoch].totalSupply;
 
-            collected = inchBalance.mul(share).div(totalSupply);
+            collected = inchBalance * share / totalSupply;
 
             _token.epochBalance[epoch].balances[user] = 0;
-            _token.epochBalance[epoch].totalSupply = totalSupply.sub(share);
-            _token.epochBalance[epoch].inchBalance = inchBalance.sub(collected);
+            _token.epochBalance[epoch].totalSupply = totalSupply - share;
+            _token.epochBalance[epoch].inchBalance = inchBalance - collected;
         }
     }
 
