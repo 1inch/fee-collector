@@ -6,12 +6,10 @@ function _normalizeOp (op) {
         if (op.stack.length > 8 && op.stack[op.stack.length - 8] === '0000000000000000000000000000000000000000000000000000000000000001') {
             op.gasCost = 700 + 3000;
             op.op = 'STATICCALL-ECRECOVER';
-        }
-        else if (op.stack.length > 8 && op.stack[op.stack.length - 8] <= '00000000000000000000000000000000000000000000000000000000000000FF') {
+        } else if (op.stack.length > 8 && op.stack[op.stack.length - 8] <= '00000000000000000000000000000000000000000000000000000000000000FF') {
             op.gasCost = 700;
             op.op = 'STATICCALL-' + op.stack[op.stack.length - 8].substr(62, 2);
-        }
-        else {
+        } else {
             op.gasCost = 700;
         }
     }
@@ -52,10 +50,10 @@ async function gasspectEVM (txHash) {
         id: new Date().getTime(),
     });
 
-    let ops = trace.result.structLogs;
+    const ops = trace.result.structLogs;
 
-    let trace_address = [0, -1];
-    for (let op of ops) {
+    const trace_address = [0, -1];
+    for (const op of ops) {
         op.trace_address = trace_address.slice(0, trace_address.length - 1);
         _normalizeOp(op);
 
