@@ -295,7 +295,7 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
             await this.weth.updateReward(this.feeCollector.address, wallet, reward, { from: wallet });
 
             const price = await this.feeCollector.price.call(this.weth.address);
-            const balance1 = await this.feeCollector.balance.call(wallet);
+            const balance1 = await this.feeCollector.balanceOf.call(wallet);
             
             expect(balance1.toString()).equal('0');
 
@@ -306,7 +306,7 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
             await this.weth.updateReward(this.feeCollector.address, wallet, reward, { from: wallet });
 
             const tokenInfo2_epoch0 = await getTokenInfo(this.feeCollector, this.weth.address, wallet, 0);
-            const balance2 = await this.feeCollector.balance.call(wallet);
+            const balance2 = await this.feeCollector.balanceOf.call(wallet);
 
             expect(balance2.toString()).equal(amount.toString());
         });
@@ -440,7 +440,7 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
             await this.feeCollector.updateRewardNonLP(this.weth.address, wallet, reward, { from: wallet });
 
             const price = await this.feeCollector.price.call(this.weth.address);
-            const balance1 = await this.feeCollector.balance.call(wallet);
+            const balance1 = await this.feeCollector.balanceOf.call(wallet);
             
             expect(balance1.toString()).equal('0');
 
@@ -451,7 +451,7 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
             await this.feeCollector.updateRewardNonLP(this.weth.address, wallet, reward, { from: wallet });
 
             const tokenInfo2_epoch0 = await getTokenInfo(this.feeCollector, this.weth.address, wallet, 0);
-            const balance2 = await this.feeCollector.balance.call(wallet);
+            const balance2 = await this.feeCollector.balanceOf.call(wallet);
 
             expect(balance2.toString()).equal(amount.toString());
         });
@@ -553,7 +553,7 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
             expect(tokenInfo1_epoch1.firstUnprocessedEpoch.toString()).equal('1');
             expect(tokenInfo1_epoch1.currentEpoch.toString()).equal('2');
 
-            const balance1 = await this.feeCollector.balance.call(wallet);
+            const balance1 = await this.feeCollector.balanceOf.call(wallet);
             expect(balance1.toString()).equal('0');
 
             // claim with updateReward method
@@ -586,7 +586,7 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
             expect(tokenInfo2_epoch2.firstUnprocessedEpoch.toString()).equal('1');
             expect(tokenInfo2_epoch2.currentEpoch.toString()).equal('2');
 
-            const balance2 = await this.feeCollector.balance.call(wallet);
+            const balance2 = await this.feeCollector.balanceOf.call(wallet);
             expect(balance2.toString()).equal(amount.add(amount2.muln(9).divn(10)).toString());
         });
 
