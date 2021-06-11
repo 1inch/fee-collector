@@ -57,7 +57,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
     uint256 public minValue;
     uint256 public lastTokenPriceValueDefault;
     uint256 public lastTokenTimeDefault;
-    
+
     constructor(
         IERC20 _token,
         uint256 _minValue,
@@ -117,9 +117,9 @@ contract FeeCollector is Ownable, BalanceAccounting {
         uint256 secs = time - lastTime;
         result = (tokenInfo[_token].lastPriceValue == 0 ? lastTokenPriceValueDefault : tokenInfo[_token].lastPriceValue);
         for (uint i = 0; secs > 0 && i < table.length; i++) {
-            if (secs & 1 != 0) { 
+            if (secs & 1 != 0) {
                 result = result * table[i] / 1e36;
-            } 
+            }
             if (result < minValue) return minValue;
             secs >>= 1;
         }
@@ -205,7 +205,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
             require(epochBalance.tokenBalance + currentEpochBalance.tokenBalance >= returnAmount, "not enough tokens");
 
             uint256 amountPart = epochBalance.tokenBalance.mul(amount).div(returnAmount);
-            
+
             currentEpochBalance.tokenBalance = currentEpochBalance.tokenBalance.sub(returnAmount.sub(epochBalance.tokenBalance));
             currentEpochBalance.inchBalance = currentEpochBalance.inchBalance.add(amount.sub(amountPart));
 
@@ -221,7 +221,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
         // _token.lastTime = block.timestamp;
 
         token.transferFrom(msg.sender, address(this), amount);
-        erc20.transfer(msg.sender, returnAmount);              
+        erc20.transfer(msg.sender, returnAmount);
     }
 
     function claim(IERC20[] memory pools) external {
@@ -343,5 +343,5 @@ contract FeeCollector is Ownable, BalanceAccounting {
 
     function getFirstUserUnprocessedEpoch(address user, IERC20 _token) external view returns(uint256) {
         return tokenInfo[_token].firstUserUnprocessedEpoch[user];
-    } 
+    }
 }
