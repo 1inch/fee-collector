@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "../FeeCollector.sol";
+import "../interfaces/IFeeCollector.sol";
 
 
 contract TokenMock is ERC20, Ownable {
@@ -23,7 +23,7 @@ contract TokenMock is ERC20, Ownable {
         return block.chainid;
     }
 
-    function updateReward(FeeCollector _feeCollector, address referral, uint256 amount) public {
+    function updateReward(IFeeCollector _feeCollector, address referral, uint256 amount) public {
         transfer(address(_feeCollector), amount);
         return _feeCollector.updateReward(referral, amount);
     }
