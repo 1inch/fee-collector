@@ -226,8 +226,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
 
     function claim(IERC20[] memory pools) external {
         for (uint256 i = 0; i < pools.length; ++i) {
-            IERC20 erc20 = pools[i];
-            TokenInfo storage _token = tokenInfo[erc20];
+            TokenInfo storage _token = tokenInfo[pools[i]];
             _collectProcessedEpochs(msg.sender, _token, _token.currentEpoch);
         }
 
@@ -235,9 +234,11 @@ contract FeeCollector is Ownable, BalanceAccounting {
         if (userBalance > 1) {
             // Avoid erasing storage to decrease gas footprint for referral payments
             balance[msg.sender] = 1;
-            _burn(msg.sender, userBalance);
-            _mint(msg.sender, 1);
-            token.transfer(msg.sender, userBalance - 1);
+            unchecked {
+                uint256 withdrawn = userBalance - 1;
+                _burn(msg.sender, withdrawn);
+                token.transfer(msg.sender, withdrawn);
+            }
         }
     }
 
@@ -262,14 +263,13 @@ contract FeeCollector is Ownable, BalanceAccounting {
         require(_token.firstUserUnprocessedEpoch[msg.sender] == firstUnprocessedEpoch, "Epoch funds already claimed");
 
         _token.firstUserUnprocessedEpoch[msg.sender] = currentEpoch;
-        uint256 share = _token.epochBalance[firstUnprocessedEpoch].balances[msg.sender];
+        EpochBalance storage epochBalance = _token.epochBalance[firstUnprocessedEpoch];
+        uint256 share = epochBalance.balances[msg.sender];
 
         if (share > 0) {
-            EpochBalance storage epochBalance = _token.epochBalance[firstUnprocessedEpoch];
             uint256 totalSupply = epochBalance.totalSupply;
-            _token.epochBalance[firstUnprocessedEpoch].balances[msg.sender] = 0;
+            epochBalance.balances[msg.sender] = 0;
             epochBalance.totalSupply = totalSupply.sub(share);
-
             epochBalance.tokenBalance = _transferTokenShare(erc20, epochBalance.tokenBalance, share, totalSupply);
             epochBalance.inchBalance = _transferTokenShare(token, epochBalance.inchBalance, share, totalSupply);
         }
