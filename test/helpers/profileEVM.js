@@ -1,5 +1,4 @@
 const { promisify } = require('util');
-const fs = require('fs').promises;
 
 function _normalizeOp (op) {
     if (op.op === 'STATICCALL') {
@@ -13,10 +12,10 @@ function _normalizeOp (op) {
             op.gasCost = 700;
         }
     }
-    if (['CALL', 'DELEGATECALL', 'CALLCODE'].indexOf(op.op) != -1) {
+    if (['CALL', 'DELEGATECALL', 'CALLCODE'].indexOf(op.op) !== -1) {
         op.gasCost = 700;
     }
-    if (['RETURN', 'REVERT', 'INVALID'].indexOf(op.op) != -1) {
+    if (['RETURN', 'REVERT', 'INVALID'].indexOf(op.op) !== -1) {
         op.gasCost = 3;
     }
 }
@@ -52,27 +51,27 @@ async function gasspectEVM (txHash) {
 
     const ops = trace.result.structLogs;
 
-    const trace_address = [0, -1];
+    const traceAddress = [0, -1];
     for (const op of ops) {
-        op.trace_address = trace_address.slice(0, trace_address.length - 1);
+        op.traceAddress = traceAddress.slice(0, traceAddress.length - 1);
         _normalizeOp(op);
 
-        if (op.depth + 2 > trace_address.length) {
-            trace_address[trace_address.length - 1] += 1;
-            trace_address.push(-1);
+        if (op.depth + 2 > traceAddress.length) {
+            traceAddress[traceAddress.length - 1] += 1;
+            traceAddress.push(-1);
         }
 
-        if (op.depth + 2 < trace_address.length) {
-            trace_address.pop();
+        if (op.depth + 2 < traceAddress.length) {
+            traceAddress.pop();
         }
     }
 
-    console.log(ops.filter(op => op.gasCost > 300).map(op => op.trace_address.join('-') + '-' + op.op + ' = ' + op.gasCost));
+    console.log(ops.filter(op => op.gasCost > 300).map(op => op.traceAddress.join('-') + '-' + op.op + ' = ' + op.gasCost));
 
     // await fs.writeFile("./trace-3.json", JSON.stringify(ops));
 
     // const res = ops.reduce((dict, op) => {
-    //     const key = op.trace_address.join('-') + '-' + op.op;
+    //     const key = op.traceAddress.join('-') + '-' + op.op;
     //     dict[key] = (dict[key] || 0) + op.gasCost;
     //     return dict;
     // }, {});
