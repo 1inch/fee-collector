@@ -136,31 +136,20 @@ contract FeeCollector is Ownable, BalanceAccounting {
 
     function updateRewards(address[] calldata receivers, uint256[] calldata amounts) external {
         for (uint i = 0; i < receivers.length; i++) {
-            updateReward(receivers[i], amounts[i]);
+            _updateReward(IERC20(msg.sender), receivers[i], amounts[i]);
         }
     }
 
-    function updateReward(address referral, uint256 amount) public {
-        IERC20 erc20 = IERC20(msg.sender);
-        TokenInfo storage _token = tokenInfo[erc20];
-        uint256 currentEpoch = _token.currentEpoch;
-
-        uint256 fee = _token.epochBalance[currentEpoch].tokenBalance;
-        tokenInfo[IERC20(msg.sender)].lastPriceValue = priceForTime(block.timestamp, IERC20(msg.sender)) * (fee + amount) / (fee == 0 ? 1 : fee);
-        tokenInfo[IERC20(msg.sender)].lastTime = block.timestamp;
-
-        // Add new reward to current epoch
-        _token.epochBalance[currentEpoch].balances[referral] += amount;
-        _token.epochBalance[currentEpoch].totalSupply += amount;
-        _token.epochBalance[currentEpoch].tokenBalance += amount;
-
-        // Collect all processed epochs and advance user token epoch
-        _collectProcessedEpochs(referral, _token, currentEpoch);
+    function updateReward(address referral, uint256 amount) external {
+        _updateReward(IERC20(msg.sender), referral, amount);
     }
 
-    function updateRewardNonLP(IERC20 erc20, address referral, uint256 amount) public {
+    function updateRewardNonLP(IERC20 erc20, address referral, uint256 amount) external {
         erc20.transferFrom(msg.sender, address(this), amount);
+        _updateReward(erc20, referral, amount);
+    }
 
+    function _updateReward(IERC20 erc20, address referral, uint256 amount) private {
         TokenInfo storage _token = tokenInfo[erc20];
         uint256 currentEpoch = _token.currentEpoch;
 
