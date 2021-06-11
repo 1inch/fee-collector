@@ -67,27 +67,26 @@ contract FeeCollector is Ownable, BalanceAccounting {
         token = _token;
 
         uint256 z;
-        uint256[20] memory tmp_k;
-        _k00 = tmp_k[0] = z = _deceleration;
-        _k01 = tmp_k[1] = z = z * z / 1e36;
-        _k02 = tmp_k[2] = z = z * z / 1e36;
-        _k03 = tmp_k[3] = z = z * z / 1e36;
-        _k04 = tmp_k[4] = z = z * z / 1e36;
-        _k05 = tmp_k[5] = z = z * z / 1e36;
-        _k06 = tmp_k[6] = z = z * z / 1e36;
-        _k07 = tmp_k[7] = z = z * z / 1e36;
-        _k08 = tmp_k[8] = z = z * z / 1e36;
-        _k09 = tmp_k[9] = z = z * z / 1e36;
-        _k10 = tmp_k[10] = z = z * z / 1e36;
-        _k11 = tmp_k[11] = z = z * z / 1e36;
-        _k12 = tmp_k[12] = z = z * z / 1e36;
-        _k13 = tmp_k[13] = z = z * z / 1e36;
-        _k14 = tmp_k[14] = z = z * z / 1e36;
-        _k15 = tmp_k[15] = z = z * z / 1e36;
-        _k16 = tmp_k[16] = z = z * z / 1e36;
-        _k17 = tmp_k[17] = z = z * z / 1e36;
-        _k18 = tmp_k[18] = z = z * z / 1e36;
-        _k19 = tmp_k[19] = z = z * z / 1e36;
+        _k00 = z = _deceleration;
+        _k01 = z = z * z / 1e36;
+        _k02 = z = z * z / 1e36;
+        _k03 = z = z * z / 1e36;
+        _k04 = z = z * z / 1e36;
+        _k05 = z = z * z / 1e36;
+        _k06 = z = z * z / 1e36;
+        _k07 = z = z * z / 1e36;
+        _k08 = z = z * z / 1e36;
+        _k09 = z = z * z / 1e36;
+        _k10 = z = z * z / 1e36;
+        _k11 = z = z * z / 1e36;
+        _k12 = z = z * z / 1e36;
+        _k13 = z = z * z / 1e36;
+        _k14 = z = z * z / 1e36;
+        _k15 = z = z * z / 1e36;
+        _k16 = z = z * z / 1e36;
+        _k17 = z = z * z / 1e36;
+        _k18 = z = z * z / 1e36;
+        _k19 = z = z * z / 1e36;
         require(z * z < 1e36, "Deceleration is too slow");
 
         minValue = lastTokenPriceValueDefault = _minValue;
@@ -346,7 +345,3 @@ contract FeeCollector is Ownable, BalanceAccounting {
         return tokenInfo[_token].firstUserUnprocessedEpoch[user];
     } 
 }
-
-
-
-
