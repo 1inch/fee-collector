@@ -111,27 +111,36 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
         });
 
         it('add reward 100 and check cost changing', async function () {
-            const lastTime = await this.feeCollector.lastTokenTimeDefault.call();
+            let lastTime = await this.feeCollector.lastTokenTimeDefault.call();
             const cost1 = await this.feeCollector.priceForTime.call(lastTime, this.weth.address);
+            
             await this.weth.updateReward(this.feeCollector.address, wallet, toBN(100), { from: wallet });
+            
+            const tokenInfo = await getTokenInfo(this.feeCollector, this.weth.address, wallet, 0);
+            lastTime = tokenInfo.lastTime;
             const cost2 = await this.feeCollector.priceForTime.call(lastTime, this.weth.address);
             expect(cost1.muln(100).toString()).equal(cost2.toString());
         });
 
         it('add reward 100 and check cost changing after 1 sec', async function () {
-            const lastTime = await this.feeCollector.lastTokenTimeDefault.call();
             await this.weth.updateReward(this.feeCollector.address, wallet, toBN(100), { from: wallet });
+
+            const tokenInfo = await getTokenInfo(this.feeCollector, this.weth.address, wallet, 0);
+            const lastTime = tokenInfo.lastTime;
+
             const cost1 = await this.feeCollector.priceForTime.call(lastTime, this.weth.address);
             expect(cost1.toString()).equal(toBN(minValue).muln(100).toString());
+
             const cost2 = await this.feeCollector.priceForTime.call(lastTime.add(toBN(1)), this.weth.address);
             const result = cost1.mul(toBN(deceleration)).div(bn1e36);
             expect(cost2.toString()).equal(result.toString());
         });
 
         it('add reward 1.5e7 and check cost changing to minValue with time', async function () {
-            const lastTime = await this.feeCollector.lastTokenTimeDefault.call();
             await this.weth.updateReward(this.feeCollector.address, wallet, toBN(15000000), { from: wallet });
-            
+
+            const tokenInfo = await getTokenInfo(this.feeCollector, this.weth.address, wallet, 0);
+            const lastTime = tokenInfo.lastTime;
             const maxValueBN = toBN(minValue).muln(15000000);
             const minValueBN = toBN(minValue);
             let cost = await this.feeCollector.priceForTime.call(lastTime, this.weth.address);
@@ -143,6 +152,7 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
             const step = 1000;
             for (let i = 0; i < 200; i++) {
                 const n = toBN(i).muln(step);
+
                 cost = await this.feeCollector.priceForTime.call(lastTime.add(n), this.weth.address);
                 
                 let result = maxValueBN;
