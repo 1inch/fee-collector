@@ -2,16 +2,31 @@
 
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/interfaces/IERC1271.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
+import "./helpers/AmountCalculator.sol";
+import "./helpers/ImmutableOwner.sol";
+import "./helpers/HashHelper.sol";
+import "./libraries/ArgumentsDecoder.sol";
 import "./libraries/UniERC20.sol";
 import "./utils/BalanceAccounting.sol";
 
 
-contract FeeCollector is Ownable, BalanceAccounting {
+contract FeeCollector is
+    AmountCalculator,
+    BalanceAccounting,
+    HashHelper,
+    IERC1271,
+    ImmutableOwner(address(this)) {
     using SafeMath for uint256;
     using UniERC20 for IERC20;
+    using ArgumentsDecoder for bytes;
+
+    uint256 constant private _FROM_INDEX = 0;
+    uint256 constant private _TO_INDEX = 1;
+    uint256 constant private _AMOUNT_INDEX = 2;
+
 
     IERC20 public immutable token;
     uint256 private immutable _k00;
@@ -101,11 +116,15 @@ contract FeeCollector is Ownable, BalanceAccounting {
         ];
     }
 
-    function price(IERC20 _token) public view returns(uint256 result) {
-        return priceForTime(block.timestamp, _token);
+    function tokenPriceInInches(IERC20 _token) public view returns(uint256 result) {
+        return tokenPriceInInchesForTime(block.timestamp, _token);
     }
 
-    function priceForTime(uint256 time, IERC20 _token) public view returns(uint256 result) {
+    function inchPriceInToken(IERC20 _token) public view returns(uint256 result) {
+        return 1e36/tokenPriceInInches(_token);
+    }
+
+    function tokenPriceInInchesForTime(uint256 time, IERC20 _token) public view returns(uint256 result) {
         uint256[20] memory table = [
             _k00, _k01, _k02, _k03, _k04,
             _k05, _k06, _k07, _k08, _k09,
@@ -148,7 +167,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
         uint256 currentEpoch = _token.currentEpoch;
 
         uint256 fee = _token.epochBalance[currentEpoch].tokenBalance;
-        tokenInfo[IERC20(msg.sender)].lastPriceValue = priceForTime(block.timestamp, IERC20(msg.sender)) * (fee + amount) / (fee == 0 ? 1 : fee);
+        tokenInfo[IERC20(msg.sender)].lastPriceValue = tokenPriceInInchesForTime(block.timestamp, IERC20(msg.sender)) * (fee + amount) / (fee == 0 ? 1 : fee);
         tokenInfo[IERC20(msg.sender)].lastTime = block.timestamp;
 
         // Add new reward to current epoch
@@ -167,7 +186,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
         uint256 currentEpoch = _token.currentEpoch;
 
         uint256 fee = _token.epochBalance[currentEpoch].tokenBalance;
-        tokenInfo[erc20].lastPriceValue = priceForTime(block.timestamp, erc20) * (fee + amount) / (fee == 0 ? 1 : fee);
+        tokenInfo[erc20].lastPriceValue = tokenPriceInInchesForTime(block.timestamp, erc20) * (fee + amount) / (fee == 0 ? 1 : fee);
         tokenInfo[erc20].lastTime = block.timestamp;
 
         // Add new reward to current epoch
@@ -179,14 +198,16 @@ contract FeeCollector is Ownable, BalanceAccounting {
         _collectProcessedEpochs(referral, _token, currentEpoch);
     }
 
-    function trade(IERC20 erc20, uint256 amount) external {
+    function func_somethingHere(address from, address to, uint256 returnAmount, IERC20 erc20) external onlyImmutableOwner {
+        require(to == address(this), "Invalid tokens source");
+
         TokenInfo storage _token = tokenInfo[erc20];
         uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
         EpochBalance storage epochBalance = _token.epochBalance[firstUnprocessedEpoch];
         EpochBalance storage currentEpochBalance = _token.epochBalance[_token.currentEpoch];
 
-        uint256 _price = price(erc20);
-        uint256 returnAmount = amount.div(_price);
+        uint256 _price = tokenPriceInInches(erc20);
+        uint256 amount = returnAmount.mul(_price);
 
         if (_token.firstUnprocessedEpoch == _token.currentEpoch) {
             _token.currentEpoch = _token.currentEpoch.add(1);
@@ -215,9 +236,69 @@ contract FeeCollector is Ownable, BalanceAccounting {
             _token.currentEpoch = _token.currentEpoch.add(1);
         }
 
-        // uint256 fee = _token.epochBalance[_token.currentEpoch].tokenBalance;
-        // _token.lastPriceValue = priceForTime(block.timestamp, erc20) * (fee - returnAmount) / (fee == 0 ? 1 : fee);
-        // _token.lastTime = block.timestamp;
+        token.transferFrom(from, address(this), amount);
+        erc20.transfer(from, returnAmount);
+    }
+
+    function isValidSignature(bytes32 hash, bytes memory signature) public view override returns(bytes4) {
+        //LimitOrderProtocol.OrderRFQ memory order = abi.decode(signature, (LimitOrderProtocol.OrderRFQ));
+        uint256 info;
+        address makerAsset;
+        address takerAsset;
+        bytes memory makerAssetData;
+        bytes memory takerAssetData;
+        assembly {  // solhint-disable-line no-inline-assembly
+            info := mload(add(signature, 0x40))
+            makerAsset := mload(add(signature, 0x60))
+            takerAsset := mload(add(signature, 0x80))
+            makerAssetData := add(add(signature, 0x40), mload(add(signature, 0xA0)))
+            takerAssetData := add(add(signature, 0x40), mload(add(signature, 0xC0)))
+        }
+
+        require(
+            takerAssetData.decodeAddress(_TO_INDEX) == address(this) &&
+            hashOrder(info, makerAsset, takerAsset, makerAssetData, takerAssetData) == hash,
+            "FeeCollector: invalid signature"
+        );
+
+        return this.isValidSignature.selector;
+    }
+
+    function trade(IERC20 erc20, uint256 amount) external {
+        TokenInfo storage _token = tokenInfo[erc20];
+        uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
+        EpochBalance storage epochBalance = _token.epochBalance[firstUnprocessedEpoch];
+        EpochBalance storage currentEpochBalance = _token.epochBalance[_token.currentEpoch];
+
+        uint256 _price = tokenPriceInInches(erc20);
+        uint256 returnAmount = amount.div(_price);
+
+        if (_token.firstUnprocessedEpoch == _token.currentEpoch) {
+            _token.currentEpoch = _token.currentEpoch.add(1);
+        }
+
+        if (returnAmount <= epochBalance.tokenBalance) {
+            if (returnAmount == epochBalance.tokenBalance) {
+                _token.firstUnprocessedEpoch = firstUnprocessedEpoch.add(1);
+            }
+
+            epochBalance.tokenBalance = epochBalance.tokenBalance.sub(returnAmount);
+            epochBalance.inchBalance = epochBalance.inchBalance.add(amount);
+        } else {
+            require(firstUnprocessedEpoch.add(1) == _token.currentEpoch, "not enough tokens");
+            require(epochBalance.tokenBalance + currentEpochBalance.tokenBalance >= returnAmount, "not enough tokens");
+
+            uint256 amountPart = epochBalance.tokenBalance.mul(amount).div(returnAmount);
+
+            currentEpochBalance.tokenBalance = currentEpochBalance.tokenBalance.sub(returnAmount.sub(epochBalance.tokenBalance));
+            currentEpochBalance.inchBalance = currentEpochBalance.inchBalance.add(amount.sub(amountPart));
+
+            epochBalance.tokenBalance = 0;
+            epochBalance.inchBalance = epochBalance.inchBalance.add(amountPart);
+
+            _token.firstUnprocessedEpoch = firstUnprocessedEpoch.add(1);
+            _token.currentEpoch = _token.currentEpoch.add(1);
+        }
 
         token.transferFrom(msg.sender, address(this), amount);
         erc20.transfer(msg.sender, returnAmount);
