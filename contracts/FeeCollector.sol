@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "./libraries/UniERC20.sol";
 import "./utils/BalanceAccounting.sol";
 
@@ -55,6 +56,8 @@ contract FeeCollector is Ownable, BalanceAccounting {
     uint256 public lastTokenPriceValueDefault;
     uint256 public lastTokenTimeDefault;
 
+    uint8 public immutable decimals;
+
     constructor(
         IERC20 _token,
         uint256 _minValue,
@@ -62,6 +65,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
     ) {
         require(_deceleration > 0 && _deceleration < 1e36, "Invalid deceleration");
         token = _token;
+        decimals = IERC20Metadata(address(_token)).decimals();
 
         uint256 z;
         _k00 = z = _deceleration;
@@ -128,10 +132,6 @@ contract FeeCollector is Ownable, BalanceAccounting {
 
     function symbol() external view returns(string memory) {
         return string(abi.encodePacked("fee-", token.uniSymbol()));
-    }
-
-    function decimals() external view returns(uint8) {
-        return uint8(token.uniDecimals());
     }
 
     function updateRewards(address[] calldata receivers, uint256[] calldata amounts) external {
