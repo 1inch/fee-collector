@@ -25,6 +25,6 @@ contract TokenMock is ERC20, Ownable {
 
     function updateReward(IFeeCollector _feeCollector, address referral, uint256 amount) public {
         transfer(address(_feeCollector), amount);
-        return _feeCollector.updateReward(referral, amount);
+        _feeCollector.updateReward(referral, amount);
     }
 }
