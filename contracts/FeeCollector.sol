@@ -117,15 +117,15 @@ contract FeeCollector is
         ];
     }
 
-    function tokenPriceInInches(IERC20 _token) public view returns(uint256 result) {
-        return tokenPriceInInchesForTime(block.timestamp, _token);
+    function tokenPriceInInches(IERC20 _token) public view returns(uint256) {
+        return tokenPriceForTime(block.timestamp, _token, false);
     }
 
-    function inchPriceInToken(IERC20 _token) public view returns(uint256 result) {
-        return (FIXED_POINT_MULTIPLIER * FIXED_POINT_MULTIPLIER)/tokenPriceInInches(_token);
+    function inchPriceInToken(IERC20 _token) public view returns(uint256) {
+        return tokenPriceForTime(block.timestamp, _token, true);
     }
 
-    function tokenPriceInInchesForTime(uint256 time, IERC20 _token) public view returns(uint256 result) {
+    function tokenPriceForTime(uint256 time, IERC20 _token, bool reverse) public view returns(uint256 result) {
         uint256[20] memory table = [
             _k00, _k01, _k02, _k03, _k04,
             _k05, _k06, _k07, _k08, _k09,
@@ -141,6 +141,9 @@ contract FeeCollector is
             }
             if (result < minValue) return minValue;
             secs >>= 1;
+        }
+        if (reverse) {
+            result = (FIXED_POINT_MULTIPLIER * FIXED_POINT_MULTIPLIER) / result;
         }
     }
 
@@ -172,7 +175,7 @@ contract FeeCollector is
         uint256 currentEpoch = _token.currentEpoch;
 
         uint256 fee = _token.epochBalance[currentEpoch].tokenBalance;
-        tokenInfo[erc20].lastPriceValue = tokenPriceInInchesForTime(block.timestamp, erc20) * (fee + amount) / (fee == 0 ? 1 : fee);
+        tokenInfo[erc20].lastPriceValue = tokenPriceForTime(block.timestamp, erc20, false) * (fee + amount) / (fee == 0 ? 1 : fee);
         tokenInfo[erc20].lastTime = block.timestamp;
 
         // Add new reward to current epoch

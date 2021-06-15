@@ -73,8 +73,17 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
 
         it('started price', async function () {
             const lastTime = await this.feeCollector.lastTokenTimeDefault.call();
-            const cost = await this.feeCollector.tokenPriceInInchesForTime.call(lastTime, this.weth.address);
+            const cost = await this.feeCollector.tokenPriceForTime.call(lastTime, this.weth.address, false);
             expect(cost.toString()).equal(minValue);
+        });
+
+        it('started reverse price', async function () {
+            const lastTime = await this.feeCollector.lastTokenTimeDefault.call();
+            const cost = await this.feeCollector.tokenPriceForTime.call(lastTime, this.weth.address, false);
+            const reverseCost = await this.feeCollector.tokenPriceForTime.call(lastTime, this.weth.address, true);
+
+            const expectedReverseCost = bn1e36.mul(bn1e36).div(cost);
+            expect(expectedReverseCost.toString()).equal(reverseCost.toString());
         });
 
         it('name', async function () {
@@ -86,25 +95,25 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
     describe('priceForTime', async function () {
         it('one sec after started', async function () {
             const lastTime = await this.feeCollector.lastTokenTimeDefault.call();
-            const cost = await this.feeCollector.tokenPriceInInchesForTime.call(lastTime.add(toBN(1)), this.weth.address);
+            const cost = await this.feeCollector.tokenPriceForTime.call(lastTime.add(toBN(1)), this.weth.address, false);
             expect(cost.toString()).equal(minValue.toString());
         });
 
         it('two secs after started', async function () {
             const lastTime = await this.feeCollector.lastTokenTimeDefault.call();
-            const cost = await this.feeCollector.tokenPriceInInchesForTime.call(lastTime.add(toBN(2)), this.weth.address);
+            const cost = await this.feeCollector.tokenPriceForTime.call(lastTime.add(toBN(2)), this.weth.address, false);
             expect(cost.toString()).equal(minValue.toString());
         });
 
         it('add reward 100 and check cost changing', async function () {
             let lastTime = await this.feeCollector.lastTokenTimeDefault.call();
-            const cost1 = await this.feeCollector.tokenPriceInInchesForTime.call(lastTime, this.weth.address);
+            const cost1 = await this.feeCollector.tokenPriceForTime.call(lastTime, this.weth.address, false);
 
             await this.weth.updateReward(this.feeCollector.address, wallet, toBN(100), { from: wallet });
 
             const tokenInfo = await getTokenInfo(this.feeCollector, this.weth.address, wallet, 0);
             lastTime = tokenInfo.lastTime;
-            const cost2 = await this.feeCollector.tokenPriceInInchesForTime.call(lastTime, this.weth.address);
+            const cost2 = await this.feeCollector.tokenPriceForTime.call(lastTime, this.weth.address, false);
             expect(cost1.muln(100).toString()).equal(cost2.toString());
         });
 
@@ -114,10 +123,10 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
             const tokenInfo = await getTokenInfo(this.feeCollector, this.weth.address, wallet, 0);
             const lastTime = tokenInfo.lastTime;
 
-            const cost1 = await this.feeCollector.tokenPriceInInchesForTime.call(lastTime, this.weth.address);
+            const cost1 = await this.feeCollector.tokenPriceForTime.call(lastTime, this.weth.address, false);
             expect(cost1.toString()).equal(toBN(minValue).muln(100).toString());
 
-            const cost2 = await this.feeCollector.tokenPriceInInchesForTime.call(lastTime.add(toBN(1)), this.weth.address);
+            const cost2 = await this.feeCollector.tokenPriceForTime.call(lastTime.add(toBN(1)), this.weth.address, false);
             const result = cost1.mul(toBN(deceleration)).div(bn1e36);
             expect(cost2.toString()).equal(result.toString());
         });
@@ -129,17 +138,17 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
             const lastTime = tokenInfo.lastTime;
             const maxValueBN = toBN(minValue).muln(15000000);
             const minValueBN = toBN(minValue);
-            let cost = await this.feeCollector.tokenPriceInInchesForTime.call(lastTime, this.weth.address);
+            let cost = await this.feeCollector.tokenPriceForTime.call(lastTime, this.weth.address, false);
             expect(cost.toString()).equal(maxValueBN.toString());
 
-            cost = await this.feeCollector.tokenPriceInInchesForTime.call(lastTime.add(toBN(1)), this.weth.address);
+            cost = await this.feeCollector.tokenPriceForTime.call(lastTime.add(toBN(1)), this.weth.address, false);
             expect(cost.toString()).equal(maxValueBN.mul(toBN(deceleration)).div(bn1e36).toString());
 
             const step = 1000;
             for (let i = 0; i < 200; i++) {
                 const n = toBN(i).muln(step);
 
-                cost = await this.feeCollector.tokenPriceInInchesForTime.call(lastTime.add(n), this.weth.address);
+                cost = await this.feeCollector.tokenPriceForTime.call(lastTime.add(n), this.weth.address, false);
 
                 let result = maxValueBN;
                 let tableCalc = decelerationBN;
