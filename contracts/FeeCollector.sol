@@ -4,11 +4,13 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "./utils/BalanceAccounting.sol";
 
 
 contract FeeCollector is Ownable, BalanceAccounting {
+    using SafeERC20 for IERC20;
     
     IERC20 public immutable token;
     uint256 private immutable _k00;
@@ -143,7 +145,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
     }
 
     function updateRewardNonLP(IERC20 erc20, address referral, uint256 amount) external {
-        erc20.transferFrom(msg.sender, address(this), amount);
+        erc20.safeTransferFrom(msg.sender, address(this), amount);
         _updateReward(erc20, referral, amount);
     }
 
@@ -204,8 +206,8 @@ contract FeeCollector is Ownable, BalanceAccounting {
         // _token.lastPriceValue = priceForTime(block.timestamp, erc20) * (fee - returnAmount) / (fee == 0 ? 1 : fee);
         // _token.lastTime = block.timestamp;
 
-        token.transferFrom(msg.sender, address(this), amount);
-        erc20.transfer(msg.sender, returnAmount);
+        token.safeTransferFrom(msg.sender, address(this), amount);
+        erc20.safeTransfer(msg.sender, returnAmount);
     }
 
     function claim(IERC20[] memory pools) external {
@@ -220,7 +222,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
             unchecked {
                 uint256 withdrawn = userBalance - 1;
                 _burn(msg.sender, withdrawn);
-                token.transfer(msg.sender, withdrawn);
+                token.safeTransfer(msg.sender, withdrawn);
             }
         }
     }
@@ -233,7 +235,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
             _token.epochBalance[currentEpoch].balances[msg.sender] = 0;
             _token.epochBalance[currentEpoch].totalSupply -= userBalance;
             _token.epochBalance[currentEpoch].tokenBalance -= userBalance;
-            erc20.transfer(msg.sender, userBalance);
+            erc20.safeTransfer(msg.sender, userBalance);
         }
     }
 
@@ -261,7 +263,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
     function _transferTokenShare(IERC20 _token, uint256 balance, uint256 share, uint256 totalSupply) private returns(uint256 newBalance) {
         uint256 amount = balance * share / totalSupply;
         if (amount > 0) {
-            _token.transfer(payable(msg.sender), amount);
+            _token.safeTransfer(payable(msg.sender), amount);
         }
         return balance - amount;
     }
