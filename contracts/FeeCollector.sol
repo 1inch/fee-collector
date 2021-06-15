@@ -5,13 +5,11 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import "./libraries/UniERC20.sol";
 import "./utils/BalanceAccounting.sol";
 
 
 contract FeeCollector is Ownable, BalanceAccounting {
-    using UniERC20 for IERC20;
-
+    
     IERC20 public immutable token;
     uint256 private immutable _k00;
     uint256 private immutable _k01;
@@ -127,11 +125,11 @@ contract FeeCollector is Ownable, BalanceAccounting {
     }
 
     function name() external view returns(string memory) {
-        return string(abi.encodePacked("FeeCollector: ", token.uniName()));
+        return string(abi.encodePacked("FeeCollector: ", IERC20Metadata(address(token)).name()));
     }
 
     function symbol() external view returns(string memory) {
-        return string(abi.encodePacked("fee-", token.uniSymbol()));
+        return string(abi.encodePacked("fee-", IERC20Metadata(address(token)).symbol()));
     }
 
     function updateRewards(address[] calldata receivers, uint256[] calldata amounts) external {
@@ -263,7 +261,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
     function _transferTokenShare(IERC20 _token, uint256 balance, uint256 share, uint256 totalSupply) private returns(uint256 newBalance) {
         uint256 amount = balance * share / totalSupply;
         if (amount > 0) {
-            _token.uniTransfer(payable(msg.sender), amount);
+            _token.transfer(payable(msg.sender), amount);
         }
         return balance - amount;
     }
