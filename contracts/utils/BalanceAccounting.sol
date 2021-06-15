@@ -2,12 +2,8 @@
 
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
-
 
 contract BalanceAccounting {
-    using SafeMath for uint256;
-
     uint256 private _totalSupply;
     mapping(address => uint256) private _balances;
 
@@ -20,20 +16,16 @@ contract BalanceAccounting {
     }
 
     function _mint(address account, uint256 amount) internal virtual {
-        _totalSupply = _totalSupply.add(amount);
-        _balances[account] = _balances[account].add(amount);
+        _totalSupply += amount;
+        unchecked {
+            _balances[account] += amount;
+        }
     }
 
     function _burn(address account, uint256 amount) internal virtual {
-        _balances[account] = _balances[account].sub(amount, "Burn amount exceeds balance");
-        _totalSupply = _totalSupply.sub(amount);
-    }
-
-    function _set(address account, uint256 amount) internal virtual returns(uint256 oldAmount) {
-        oldAmount = _balances[account];
-        if (oldAmount != amount) {
-            _balances[account] = amount;
-            _totalSupply = _totalSupply.add(amount).sub(oldAmount);
+        _balances[account] -= amount;
+        unchecked {
+            _totalSupply -= amount;
         }
     }
 }
