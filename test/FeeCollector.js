@@ -47,8 +47,9 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
     beforeEach(async function () {
         this.weth = await TokenMock.new('WETH', 'WETH');
         this.token = await TokenMock.new('INCH', 'INCH');
+        this.orderLimitProtocolMock = this.token; // temporary, replace with order limit mock
 
-        this.feeCollector = await FeeCollector.new(this.token.address, minValue, deceleration);
+        this.feeCollector = await FeeCollector.new(this.token.address, minValue, deceleration, this.orderLimitProtocolMock.address);
 
         await this.weth.mint(wallet, ether('1000000'));
         await this.weth.approve(this.feeCollector.address, ether('1000000'), { from: wallet });

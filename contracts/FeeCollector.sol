@@ -16,7 +16,7 @@ contract FeeCollector is
     BalanceAccounting,
     HashHelper,
     IERC1271,
-    ImmutableOwner(address(this)) {
+    ImmutableOwner {
     using UniERC20 for IERC20;
     using ArgumentsDecoder for bytes;
 
@@ -74,8 +74,9 @@ contract FeeCollector is
     constructor(
         IERC20 _token,
         uint256 _minValue,
-        uint256 _deceleration
-    ) {
+        uint256 _deceleration,
+        address _limitOrderProtocol
+    ) ImmutableOwner(_limitOrderProtocol) {
         require(_deceleration > 0 && _deceleration < FIXED_POINT_MULTIPLIER, "Invalid deceleration");
         token = _token;
         decimals = IERC20Metadata(address(_token)).decimals();
