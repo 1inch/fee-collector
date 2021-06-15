@@ -23,6 +23,7 @@ contract FeeCollector is
     uint256 constant private _FROM_INDEX = 0;
     uint256 constant private _TO_INDEX = 1;
     uint256 constant private _AMOUNT_INDEX = 2;
+    uint256 constant private _ASSET_INDEX = 3;
     uint256 constant private FIXED_POINT_MULTIPLIER = 1e36;
 
     IERC20 public immutable token;
@@ -125,6 +126,14 @@ contract FeeCollector is
         return tokenPriceForTime(block.timestamp, _token, true);
     }
 
+    function tokenForInches(IERC20 _token, uint256 amount) public view returns(uint256) {
+        return tokenPriceInInches(_token) * amount;
+    }
+
+    function inchesForToken(IERC20 _token, uint256 amount) public view returns(uint256) {
+        return inchPriceInToken(_token) * amount;
+    }
+
     function tokenPriceForTime(uint256 time, IERC20 _token, bool reverse) public view returns(uint256 result) {
         uint256[20] memory table = [
             _k00, _k01, _k02, _k03, _k04,
@@ -187,66 +196,65 @@ contract FeeCollector is
         _collectProcessedEpochs(referral, _token, currentEpoch);
     }
 
-    function func_somethingHere(address from, address to, uint256 returnAmount, IERC20 erc20) external onlyImmutableOwner {
-        require(to == address(this), "Invalid tokens source");
-
-        TokenInfo storage _token = tokenInfo[erc20];
-        uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
-        EpochBalance storage epochBalance = _token.epochBalance[firstUnprocessedEpoch];
-        EpochBalance storage currentEpochBalance = _token.epochBalance[_token.currentEpoch];
-
-        uint256 _price = tokenPriceInInches(erc20);
-        uint256 amount = returnAmount * _price;
-
-        if (_token.firstUnprocessedEpoch == _token.currentEpoch) {
-            _token.currentEpoch = _token.currentEpoch + (1);
-        }
-
-        if (returnAmount <= epochBalance.tokenBalance) {
-            if (returnAmount == epochBalance.tokenBalance) {
-                _token.firstUnprocessedEpoch += 1;
-            }
-
-            epochBalance.tokenBalance -= returnAmount;
-            epochBalance.inchBalance += amount;
-        } else {
-            require(firstUnprocessedEpoch + 1 == _token.currentEpoch, "not enough tokens");
-            require(epochBalance.tokenBalance + currentEpochBalance.tokenBalance >= returnAmount, "not enough tokens");
-
-            uint256 amountPart = epochBalance.tokenBalance * amount / returnAmount;
-
-            currentEpochBalance.tokenBalance -= (returnAmount - epochBalance.tokenBalance);
-            currentEpochBalance.inchBalance += (amount - amountPart);
-
-            epochBalance.tokenBalance = 0;
-            epochBalance.inchBalance += amountPart;
-
-            _token.firstUnprocessedEpoch += 1;
-            _token.currentEpoch += 1;
-        }
-
-        token.transferFrom(msg.sender, address(this), amount);
-        erc20.transfer(msg.sender, returnAmount);
-    }
+//    function func_somethingHere(address from, address to, uint256 returnAmount, IERC20 erc20) external onlyImmutableOwner {
+//        require(to == address(this), "Invalid tokens source");
+//
+//        TokenInfo storage _token = tokenInfo[erc20];
+//        uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
+//        EpochBalance storage epochBalance = _token.epochBalance[firstUnprocessedEpoch];
+//        EpochBalance storage currentEpochBalance = _token.epochBalance[_token.currentEpoch];
+//
+//        uint256 _price = tokenPriceInInches(erc20);
+//        uint256 amount = returnAmount * _price;
+//
+//        if (_token.firstUnprocessedEpoch == _token.currentEpoch) {
+//            _token.currentEpoch = _token.currentEpoch + (1);
+//        }
+//
+//        if (returnAmount <= epochBalance.tokenBalance) {
+//            if (returnAmount == epochBalance.tokenBalance) {
+//                _token.firstUnprocessedEpoch += 1;
+//            }
+//
+//            epochBalance.tokenBalance -= returnAmount;
+//            epochBalance.inchBalance += amount;
+//        } else {
+//            require(firstUnprocessedEpoch + 1 == _token.currentEpoch, "not enough tokens");
+//            require(epochBalance.tokenBalance + currentEpochBalance.tokenBalance >= returnAmount, "not enough tokens");
+//
+//            uint256 amountPart = epochBalance.tokenBalance * amount / returnAmount;
+//
+//            currentEpochBalance.tokenBalance -= (returnAmount - epochBalance.tokenBalance);
+//            currentEpochBalance.inchBalance += (amount - amountPart);
+//
+//            epochBalance.tokenBalance = 0;
+//            epochBalance.inchBalance += amountPart;
+//
+//            _token.firstUnprocessedEpoch += 1;
+//            _token.currentEpoch += 1;
+//        }
+//
+//        token.transferFrom(msg.sender, address(this), amount);
+//        erc20.transfer(msg.sender, returnAmount);
+//    }
 
     function isValidSignature(bytes32 hash, bytes memory signature) public view override returns(bytes4) {
-        //LimitOrderProtocol.Order memory order = abi.decode(signature);
-        uint256 info;
-        address makerAsset;
-        address takerAsset;
-        bytes memory makerAssetData;
-        bytes memory takerAssetData;
-        assembly {  // solhint-disable-line no-inline-assembly
-            info := mload(add(signature, 0x40))
-            makerAsset := mload(add(signature, 0x60))
-            takerAsset := mload(add(signature, 0x80))
-            makerAssetData := add(add(signature, 0x40), mload(add(signature, 0xA0)))
-            takerAssetData := add(add(signature, 0x40), mload(add(signature, 0xC0)))
-        }
+        Types.Order memory order = abi.decode(signature, (Types.Order));
 
         require(
-            takerAssetData.decodeAddress(_TO_INDEX) == address(this) &&
-            hashOrder(info, makerAsset, takerAsset, makerAssetData, takerAssetData) == hash,
+            _hash(order) == hash &&
+            order.takerAssetData.decodeAddress(_TO_INDEX) == address(this) &&
+            order.interaction.length > 0 &&
+            order.getTakerAmount.decodeSelector() == bytes4(keccak256(bytes("arbitraryStaticCall(address, bytes)"))) &&
+            order.getTakerAmount.decodeAddress(0) == address(this),
+            "FeeCollector: invalid signature"
+        );
+
+        bytes memory getTakerFunc = order.getTakerAmount.decodeBytes(1);
+
+        require(
+            getTakerFunc.decodeSelector() == this.tokenForInches.selector &&
+            getTakerFunc.decodeAddress(0) == order.takerAsset,
             "FeeCollector: invalid signature"
         );
 

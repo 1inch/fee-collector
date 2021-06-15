@@ -22,6 +22,12 @@ library ArgumentsDecoder {
         }
     }
 
+    function decodeBytes(bytes memory data, uint256 argumentIndex) internal pure returns(bytes memory result) {
+        assembly { // solhint-disable-line no-inline-assembly
+            result := mload(add(add(data, 0x24), mul(argumentIndex, 0x20)))
+        }
+    }
+
     function patchAddress(bytes memory data, uint256 argumentIndex, address account) internal pure {
         assembly { // solhint-disable-line no-inline-assembly
             mstore(add(add(data, 0x24), mul(argumentIndex, 0x20)), account)
