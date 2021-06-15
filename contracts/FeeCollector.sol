@@ -14,7 +14,6 @@ import "./utils/BalanceAccounting.sol";
 
 
 contract FeeCollector is
-    AmountCalculator,
     BalanceAccounting,
     HashHelper,
     IERC1271,
@@ -26,7 +25,7 @@ contract FeeCollector is
     uint256 constant private _FROM_INDEX = 0;
     uint256 constant private _TO_INDEX = 1;
     uint256 constant private _AMOUNT_INDEX = 2;
-
+    uint256 constant private FIXED_POINT_MULTIPLIER = 1e36;
 
     IERC20 public immutable token;
     uint256 private immutable _k00;
@@ -77,31 +76,31 @@ contract FeeCollector is
         uint256 _minValue,
         uint256 _deceleration
     ) {
-        require(_deceleration > 0 && _deceleration < 1e36, "Invalid deceleration");
+        require(_deceleration > 0 && _deceleration < FIXED_POINT_MULTIPLIER, "Invalid deceleration");
         token = _token;
 
         uint256 z;
         _k00 = z = _deceleration;
-        _k01 = z = z * z / 1e36;
-        _k02 = z = z * z / 1e36;
-        _k03 = z = z * z / 1e36;
-        _k04 = z = z * z / 1e36;
-        _k05 = z = z * z / 1e36;
-        _k06 = z = z * z / 1e36;
-        _k07 = z = z * z / 1e36;
-        _k08 = z = z * z / 1e36;
-        _k09 = z = z * z / 1e36;
-        _k10 = z = z * z / 1e36;
-        _k11 = z = z * z / 1e36;
-        _k12 = z = z * z / 1e36;
-        _k13 = z = z * z / 1e36;
-        _k14 = z = z * z / 1e36;
-        _k15 = z = z * z / 1e36;
-        _k16 = z = z * z / 1e36;
-        _k17 = z = z * z / 1e36;
-        _k18 = z = z * z / 1e36;
-        _k19 = z = z * z / 1e36;
-        require(z * z < 1e36, "Deceleration is too slow");
+        _k01 = z = z * z / FIXED_POINT_MULTIPLIER;
+        _k02 = z = z * z / FIXED_POINT_MULTIPLIER;
+        _k03 = z = z * z / FIXED_POINT_MULTIPLIER;
+        _k04 = z = z * z / FIXED_POINT_MULTIPLIER;
+        _k05 = z = z * z / FIXED_POINT_MULTIPLIER;
+        _k06 = z = z * z / FIXED_POINT_MULTIPLIER;
+        _k07 = z = z * z / FIXED_POINT_MULTIPLIER;
+        _k08 = z = z * z / FIXED_POINT_MULTIPLIER;
+        _k09 = z = z * z / FIXED_POINT_MULTIPLIER;
+        _k10 = z = z * z / FIXED_POINT_MULTIPLIER;
+        _k11 = z = z * z / FIXED_POINT_MULTIPLIER;
+        _k12 = z = z * z / FIXED_POINT_MULTIPLIER;
+        _k13 = z = z * z / FIXED_POINT_MULTIPLIER;
+        _k14 = z = z * z / FIXED_POINT_MULTIPLIER;
+        _k15 = z = z * z / FIXED_POINT_MULTIPLIER;
+        _k16 = z = z * z / FIXED_POINT_MULTIPLIER;
+        _k17 = z = z * z / FIXED_POINT_MULTIPLIER;
+        _k18 = z = z * z / FIXED_POINT_MULTIPLIER;
+        _k19 = z = z * z / FIXED_POINT_MULTIPLIER;
+        require(z * z < FIXED_POINT_MULTIPLIER, "Deceleration is too slow");
 
         minValue = lastTokenPriceValueDefault = _minValue;
         lastTokenTimeDefault = block.timestamp;
@@ -121,7 +120,7 @@ contract FeeCollector is
     }
 
     function inchPriceInToken(IERC20 _token) public view returns(uint256 result) {
-        return 1e36/tokenPriceInInches(_token);
+        return (FIXED_POINT_MULTIPLIER * FIXED_POINT_MULTIPLIER)/tokenPriceInInches(_token);
     }
 
     function tokenPriceInInchesForTime(uint256 time, IERC20 _token) public view returns(uint256 result) {
@@ -136,7 +135,7 @@ contract FeeCollector is
         result = (tokenInfo[_token].lastPriceValue == 0 ? lastTokenPriceValueDefault : tokenInfo[_token].lastPriceValue);
         for (uint i = 0; secs > 0 && i < table.length; i++) {
             if (secs & 1 != 0) {
-                result = result * table[i] / 1e36;
+                result = result * table[i] / FIXED_POINT_MULTIPLIER;
             }
             if (result < minValue) return minValue;
             secs >>= 1;
@@ -241,7 +240,7 @@ contract FeeCollector is
     }
 
     function isValidSignature(bytes32 hash, bytes memory signature) public view override returns(bytes4) {
-        //LimitOrderProtocol.OrderRFQ memory order = abi.decode(signature, (LimitOrderProtocol.OrderRFQ));
+        //LimitOrderProtocol.Order memory order = abi.decode(signature);
         uint256 info;
         address makerAsset;
         address takerAsset;
