@@ -5,26 +5,31 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/interfaces/IERC1271.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import "./helpers/EIP712Alien.sol";
 import "./helpers/ImmutableOwner.sol";
-import "./helpers/HashHelper.sol";
 import "./libraries/ArgumentsDecoder.sol";
 import "./libraries/UniERC20.sol";
 import "./utils/BalanceAccounting.sol";
+import "./libraries/Types.sol";
 
 
 contract FeeCollector is
     BalanceAccounting,
-    HashHelper,
     IERC1271,
-    ImmutableOwner {
+    ImmutableOwner,
+    EIP712Alien {
     using UniERC20 for IERC20;
     using ArgumentsDecoder for bytes;
+
+    bytes32 constant public _LIMIT_ORDER_TYPEHASH = keccak256(
+        "Order(uint256 salt,address makerAsset,address takerAsset,bytes makerAssetData,bytes takerAssetData,bytes getMakerAmount,bytes getTakerAmount,bytes predicate,bytes permit,bytes interaction)"
+    );
 
     uint256 constant private _FROM_INDEX = 0;
     uint256 constant private _TO_INDEX = 1;
     uint256 constant private _AMOUNT_INDEX = 2;
     uint256 constant private _ASSET_INDEX = 3;
-    uint256 constant private FIXED_POINT_MULTIPLIER = 1e36;
+    uint256 constant private _FIXED_POINT_MULTIPLIER = 1e36;
 
     IERC20 public immutable token;
     uint256 private immutable _k00;
@@ -77,33 +82,33 @@ contract FeeCollector is
         uint256 _minValue,
         uint256 _deceleration,
         address _limitOrderProtocol
-    ) ImmutableOwner(_limitOrderProtocol) {
-        require(_deceleration > 0 && _deceleration < FIXED_POINT_MULTIPLIER, "Invalid deceleration");
+    ) ImmutableOwner(_limitOrderProtocol) EIP712Alien(_limitOrderProtocol, "1inch Limit Order Protocol", "1") {
+        require(_deceleration > 0 && _deceleration < _FIXED_POINT_MULTIPLIER, "Invalid deceleration");
         token = _token;
         decimals = IERC20Metadata(address(_token)).decimals();
 
         uint256 z;
         _k00 = z = _deceleration;
-        _k01 = z = z * z / FIXED_POINT_MULTIPLIER;
-        _k02 = z = z * z / FIXED_POINT_MULTIPLIER;
-        _k03 = z = z * z / FIXED_POINT_MULTIPLIER;
-        _k04 = z = z * z / FIXED_POINT_MULTIPLIER;
-        _k05 = z = z * z / FIXED_POINT_MULTIPLIER;
-        _k06 = z = z * z / FIXED_POINT_MULTIPLIER;
-        _k07 = z = z * z / FIXED_POINT_MULTIPLIER;
-        _k08 = z = z * z / FIXED_POINT_MULTIPLIER;
-        _k09 = z = z * z / FIXED_POINT_MULTIPLIER;
-        _k10 = z = z * z / FIXED_POINT_MULTIPLIER;
-        _k11 = z = z * z / FIXED_POINT_MULTIPLIER;
-        _k12 = z = z * z / FIXED_POINT_MULTIPLIER;
-        _k13 = z = z * z / FIXED_POINT_MULTIPLIER;
-        _k14 = z = z * z / FIXED_POINT_MULTIPLIER;
-        _k15 = z = z * z / FIXED_POINT_MULTIPLIER;
-        _k16 = z = z * z / FIXED_POINT_MULTIPLIER;
-        _k17 = z = z * z / FIXED_POINT_MULTIPLIER;
-        _k18 = z = z * z / FIXED_POINT_MULTIPLIER;
-        _k19 = z = z * z / FIXED_POINT_MULTIPLIER;
-        require(z * z < FIXED_POINT_MULTIPLIER, "Deceleration is too slow");
+        _k01 = z = z * z / _FIXED_POINT_MULTIPLIER;
+        _k02 = z = z * z / _FIXED_POINT_MULTIPLIER;
+        _k03 = z = z * z / _FIXED_POINT_MULTIPLIER;
+        _k04 = z = z * z / _FIXED_POINT_MULTIPLIER;
+        _k05 = z = z * z / _FIXED_POINT_MULTIPLIER;
+        _k06 = z = z * z / _FIXED_POINT_MULTIPLIER;
+        _k07 = z = z * z / _FIXED_POINT_MULTIPLIER;
+        _k08 = z = z * z / _FIXED_POINT_MULTIPLIER;
+        _k09 = z = z * z / _FIXED_POINT_MULTIPLIER;
+        _k10 = z = z * z / _FIXED_POINT_MULTIPLIER;
+        _k11 = z = z * z / _FIXED_POINT_MULTIPLIER;
+        _k12 = z = z * z / _FIXED_POINT_MULTIPLIER;
+        _k13 = z = z * z / _FIXED_POINT_MULTIPLIER;
+        _k14 = z = z * z / _FIXED_POINT_MULTIPLIER;
+        _k15 = z = z * z / _FIXED_POINT_MULTIPLIER;
+        _k16 = z = z * z / _FIXED_POINT_MULTIPLIER;
+        _k17 = z = z * z / _FIXED_POINT_MULTIPLIER;
+        _k18 = z = z * z / _FIXED_POINT_MULTIPLIER;
+        _k19 = z = z * z / _FIXED_POINT_MULTIPLIER;
+        require(z * z < _FIXED_POINT_MULTIPLIER, "Deceleration is too slow");
 
         minValue = lastTokenPriceValueDefault = _minValue;
         lastTokenTimeDefault = block.timestamp;
@@ -146,13 +151,13 @@ contract FeeCollector is
         result = (tokenInfo[_token].lastPriceValue == 0 ? lastTokenPriceValueDefault : tokenInfo[_token].lastPriceValue);
         for (uint i = 0; secs > 0 && i < table.length; i++) {
             if (secs & 1 != 0) {
-                result = result * table[i] / FIXED_POINT_MULTIPLIER;
+                result = result * table[i] / _FIXED_POINT_MULTIPLIER;
             }
             if (result < minValue) return minValue;
             secs >>= 1;
         }
         if (reverse) {
-            result = (FIXED_POINT_MULTIPLIER * FIXED_POINT_MULTIPLIER) / result;
+            result = (_FIXED_POINT_MULTIPLIER * _FIXED_POINT_MULTIPLIER) / result;
         }
     }
 
@@ -414,5 +419,25 @@ contract FeeCollector is
 
     function getFirstUserUnprocessedEpoch(address user, IERC20 _token) external view returns(uint256) {
         return tokenInfo[_token].firstUserUnprocessedEpoch[user];
+    }
+
+    function _hash(Types.Order memory order) internal view returns(bytes32) {
+        return _hashTypedDataV4(
+            keccak256(
+                abi.encode(
+                    _LIMIT_ORDER_TYPEHASH,
+                    order.salt,
+                    order.makerAsset,
+                    order.takerAsset,
+                    keccak256(order.makerAssetData),
+                    keccak256(order.takerAssetData),
+                    keccak256(order.getMakerAmount),
+                    keccak256(order.getTakerAmount),
+                    keccak256(order.predicate),
+                    keccak256(order.permit),
+                    keccak256(order.interaction)
+                )
+            )
+        );
     }
 }

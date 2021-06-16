@@ -98,7 +98,7 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
             const signature = web3.eth.abi.encodeParameter(ABIOrder, order);
             const result = await this.feeCollector.isValidSignature.call(orderHash, signature);
 
-            expect(result).equal('');
+            expect(result).equal('0x1626ba7e');
         });
     });
 

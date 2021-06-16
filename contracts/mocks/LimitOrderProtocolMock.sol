@@ -2,7 +2,6 @@
 
 pragma solidity ^0.8.0;
 
-/// @title 1inch Limit Order Protocol v1
 contract LimitOrderProtocolMock
 {
     function getMakerAmount(uint256 orderMakerAmount, uint256 orderTakerAmount, uint256 swapTakerAmount) external pure returns(uint256) {
