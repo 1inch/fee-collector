@@ -33,6 +33,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
     uint256 private immutable _k17;
     uint256 private immutable _k18;
     uint256 private immutable _k19;
+    uint256 private constant _MAX_TIME = 0xfffff;
 
     struct EpochBalance {
         mapping(address => uint256) balances;
@@ -114,9 +115,9 @@ contract FeeCollector is Ownable, BalanceAccounting {
             _k10, _k11, _k12, _k13, _k14,
             _k15, _k16, _k17, _k18, _k19
         ];
-        uint256 lastTime = (tokenInfo[_token].lastTime == 0 ? lastTokenTimeDefault : tokenInfo[_token].lastTime);
-        uint256 secs = time - lastTime;
-        result = (tokenInfo[_token].lastPriceValue == 0 ? lastTokenPriceValueDefault : tokenInfo[_token].lastPriceValue);
+        uint256 lastTime = tokenInfo[_token].lastTime;
+        uint256 secs = Math.min(time - lastTime, _MAX_TIME);
+        result = Math.max(tokenInfo[_token].lastPriceValue, minValue);
         for (uint i = 0; secs > 0 && i < table.length; i++) {
             if (secs & 1 != 0) {
                 result = result * table[i] / 1e36;
