@@ -242,21 +242,17 @@ contract FeeCollector is
         Types.Order memory order = abi.decode(signature, (Types.Order));
 
         require(
-            _hash(order) == hash &&
-            order.takerAssetData.decodeAddress(_TO_INDEX) == address(this) &&
-            order.interaction.length > 0 &&
-            order.getTakerAmount.decodeSelector() == bytes4(keccak256(bytes("arbitraryStaticCall(address, bytes)"))) &&
-            order.getTakerAmount.decodeAddress(0) == address(this),
+            _hash(order) == hash,
             "FeeCollector: invalid signature"
         );
-
-        bytes memory getTakerFunc = order.getTakerAmount.decodeBytes(1);
-
-        require(
-            getTakerFunc.decodeSelector() == this.tokenForInches.selector &&
-            getTakerFunc.decodeAddress(0) == order.takerAsset,
-            "FeeCollector: invalid signature"
-        );
+//
+//        bytes memory getTakerFunc = order.getTakerAmount.decodeBytes(1);
+//
+//        require(
+//            getTakerFunc.decodeSelector() == this.tokenForInches.selector &&
+//            getTakerFunc.decodeAddress(0) == order.takerAsset,
+//            "FeeCollector: invalid signature"
+//        );
 
         return this.isValidSignature.selector;
     }
