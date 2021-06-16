@@ -153,9 +153,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
         TokenInfo storage _token = tokenInfo[erc20];
         uint256 currentEpoch = _token.currentEpoch;
 
-        uint256 fee = _token.epochBalance[currentEpoch].tokenBalance;
-        tokenInfo[erc20].lastPriceValue = priceForTime(block.timestamp, erc20) * (fee + amount) / (fee == 0 ? 1 : fee);
-        tokenInfo[erc20].lastTime = block.timestamp;
+        _updateTokenState(erc20, int256(amount));
 
         // Add new reward to current epoch
         _token.epochBalance[currentEpoch].balances[referral] += amount;
@@ -166,18 +164,40 @@ contract FeeCollector is Ownable, BalanceAccounting {
         _collectProcessedEpochs(referral, _token, currentEpoch);
     }
 
+    function _updateTokenState(IERC20 erc20, int256 amount) private {
+        TokenInfo storage _token = tokenInfo[erc20];
+        uint256 currentEpoch = _token.currentEpoch;
+        uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
+
+        uint256 fee = _token.epochBalance[firstUnprocessedEpoch].tokenBalance;
+        if (firstUnprocessedEpoch != currentEpoch) {
+            fee += _token.epochBalance[currentEpoch].tokenBalance;
+        }
+
+        uint256 feeWithAmount = (amount >= 0 ? fee + uint256(amount) : fee - uint256(-amount));
+        tokenInfo[erc20].lastPriceValue = priceForTime(block.timestamp, erc20) * feeWithAmount / (fee == 0 ? 1 : fee);
+        tokenInfo[erc20].lastTime = block.timestamp;
+    }
+
     function trade(IERC20 erc20, uint256 amount) external {
         TokenInfo storage _token = tokenInfo[erc20];
         uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
         EpochBalance storage epochBalance = _token.epochBalance[firstUnprocessedEpoch];
         EpochBalance storage currentEpochBalance = _token.epochBalance[_token.currentEpoch];
 
+        uint256 tokenBalance = _token.epochBalance[firstUnprocessedEpoch].tokenBalance;
+        if (firstUnprocessedEpoch != _token.currentEpoch) {
+            tokenBalance += _token.epochBalance[_token.currentEpoch].tokenBalance;
+        }
         uint256 _price = price(erc20);
-        uint256 returnAmount = amount / _price;
+        uint256 returnAmount = amount * tokenBalance / _price;
+        require(tokenBalance >= returnAmount, "not enough tokens");
 
         if (_token.firstUnprocessedEpoch == _token.currentEpoch) {
             _token.currentEpoch += 1;
         }
+
+        _updateTokenState(erc20, -int256(returnAmount));
 
         if (returnAmount <= epochBalance.tokenBalance) {
             if (returnAmount == epochBalance.tokenBalance) {
@@ -187,9 +207,6 @@ contract FeeCollector is Ownable, BalanceAccounting {
             epochBalance.tokenBalance -= returnAmount;
             epochBalance.inchBalance += amount;
         } else {
-            require(firstUnprocessedEpoch + 1 == _token.currentEpoch, "not enough tokens");
-            require(epochBalance.tokenBalance + currentEpochBalance.tokenBalance >= returnAmount, "not enough tokens");
-
             uint256 amountPart = epochBalance.tokenBalance * amount / returnAmount;
 
             currentEpochBalance.tokenBalance -= (returnAmount - epochBalance.tokenBalance);
@@ -202,10 +219,8 @@ contract FeeCollector is Ownable, BalanceAccounting {
             _token.currentEpoch += 1;
         }
 
-        // uint256 fee = _token.epochBalance[_token.currentEpoch].tokenBalance;
-        // _token.lastPriceValue = priceForTime(block.timestamp, erc20) * (fee - returnAmount) / (fee == 0 ? 1 : fee);
-        // _token.lastTime = block.timestamp;
 
+        
         token.safeTransferFrom(msg.sender, address(this), amount);
         erc20.safeTransfer(msg.sender, returnAmount);
     }
