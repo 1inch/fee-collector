@@ -53,7 +53,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
 
     mapping(IERC20 => TokenInfo) public tokenInfo;
 
-    uint256 public minValue;
+    uint256 public immutable minValue;
     uint256 public lastTokenPriceValueDefault;
     uint256 public lastTokenTimeDefault;
 
