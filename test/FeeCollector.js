@@ -181,7 +181,6 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
 
             // tokenInfo
             const tokenInfo = await getTokenInfo(this.feeCollector, this.weth.address, wallet, 0);
-            const lastTime = tokenInfo.lastTime;
             const lastPriceValue = tokenInfo.lastPriceValue;
             expect(lastPriceValue).to.be.bignumber.equal(toBN(minValue).mul(reward));
             expect(tokenInfo.epochBalance.tokenBalance).to.be.bignumber.equal(reward);
@@ -189,7 +188,7 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
             // trade half of tokens
             let price = await this.feeCollector.price.call(this.weth.address);
             const returnAmount = reward.divn(2);
-            const amount = price.divn(2); 
+            const amount = price.divn(2);
             expect(price).to.be.bignumber.equal(toBN(minValue).mul(reward));
             expect(amount).to.be.bignumber.equal(price.divn(2));
             
@@ -198,7 +197,6 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
             // tokenInfo after trade
             price = await this.feeCollector.price.call(this.weth.address);
             const tokenInfo2 = await getTokenInfo(this.feeCollector, this.weth.address, wallet, 0);
-            const lastTime2 = tokenInfo2.lastTime;
             const lastPriceValue2 = tokenInfo2.lastPriceValue;
             expect(lastPriceValue2).to.be.bignumber.equal(price);
             expect(lastPriceValue.div(lastPriceValue2)).to.be.bignumber.equal('2');
@@ -210,7 +208,6 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
             // tokenInfo after reward
             price = await this.feeCollector.price.call(this.weth.address);
             const tokenInfo3 = await getTokenInfo(this.feeCollector, this.weth.address, wallet, 0);
-            const lastTime3 = tokenInfo3.lastTime;
             const lastPriceValue3 = tokenInfo3.lastPriceValue;
             expect(lastPriceValue3).to.be.bignumber.equal(price);
             expect(lastPriceValue.div(lastPriceValue3)).to.be.bignumber.equal('1');
