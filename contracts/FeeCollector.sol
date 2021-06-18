@@ -11,7 +11,7 @@ import "./utils/BalanceAccounting.sol";
 
 contract FeeCollector is Ownable, BalanceAccounting {
     using SafeERC20 for IERC20;
-    
+
     IERC20 public immutable token;
     uint256 private immutable _k00;
     uint256 private immutable _k01;
@@ -38,7 +38,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
     struct EpochBalance {
         mapping(address => uint256) balances;
         uint256 totalSupply;
-        uint256 tokenBalance;
+        uint256 tokenSpent;
         uint256 inchBalance;
     }
 
@@ -159,7 +159,6 @@ contract FeeCollector is Ownable, BalanceAccounting {
         // Add new reward to current epoch
         _token.epochBalance[currentEpoch].balances[referral] += amount;
         _token.epochBalance[currentEpoch].totalSupply += amount;
-        _token.epochBalance[currentEpoch].tokenBalance += amount;
 
         // Collect all processed epochs and advance user token epoch
         _collectProcessedEpochs(referral, _token, currentEpoch);
@@ -170,9 +169,9 @@ contract FeeCollector is Ownable, BalanceAccounting {
         uint256 currentEpoch = _token.currentEpoch;
         uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
 
-        uint256 fee = _token.epochBalance[firstUnprocessedEpoch].tokenBalance;
+        uint256 fee = _token.epochBalance[firstUnprocessedEpoch].totalSupply - _token.epochBalance[firstUnprocessedEpoch].tokenSpent;
         if (firstUnprocessedEpoch != currentEpoch) {
-            fee += _token.epochBalance[currentEpoch].tokenBalance;
+            fee += (_token.epochBalance[currentEpoch].totalSupply - _token.epochBalance[currentEpoch].tokenSpent);
         }
 
         uint256 feeWithAmount = (amount >= 0 ? fee + uint256(amount) : fee - uint256(-amount));
@@ -186,9 +185,9 @@ contract FeeCollector is Ownable, BalanceAccounting {
         EpochBalance storage epochBalance = _token.epochBalance[firstUnprocessedEpoch];
         EpochBalance storage currentEpochBalance = _token.epochBalance[_token.currentEpoch];
 
-        uint256 tokenBalance = _token.epochBalance[firstUnprocessedEpoch].tokenBalance;
+        uint256 tokenBalance = _token.epochBalance[firstUnprocessedEpoch].totalSupply - _token.epochBalance[firstUnprocessedEpoch].tokenSpent;
         if (firstUnprocessedEpoch != _token.currentEpoch) {
-            tokenBalance += _token.epochBalance[_token.currentEpoch].tokenBalance;
+            tokenBalance += (_token.epochBalance[_token.currentEpoch].totalSupply - _token.epochBalance[_token.currentEpoch].tokenSpent);
         }
         uint256 _price = price(erc20);
         uint256 returnAmount = amount * tokenBalance / _price;
@@ -200,28 +199,26 @@ contract FeeCollector is Ownable, BalanceAccounting {
 
         _updateTokenState(erc20, -int256(returnAmount));
 
-        if (returnAmount <= epochBalance.tokenBalance) {
-            if (returnAmount == epochBalance.tokenBalance) {
+        if (returnAmount <= epochBalance.totalSupply - epochBalance.tokenSpent) {
+            if (returnAmount == epochBalance.totalSupply - epochBalance.tokenSpent) {
                 _token.firstUnprocessedEpoch += 1;
             }
 
-            epochBalance.tokenBalance -= returnAmount;
+            epochBalance.tokenSpent += returnAmount;
             epochBalance.inchBalance += amount;
         } else {
-            uint256 amountPart = epochBalance.tokenBalance * amount / returnAmount;
+            uint256 amountPart = (epochBalance.totalSupply - epochBalance.tokenSpent) * amount / returnAmount;
 
-            currentEpochBalance.tokenBalance -= (returnAmount - epochBalance.tokenBalance);
+            currentEpochBalance.tokenSpent += (returnAmount - (epochBalance.totalSupply - epochBalance.tokenSpent));
             currentEpochBalance.inchBalance += (amount - amountPart);
 
-            epochBalance.tokenBalance = 0;
+            epochBalance.tokenSpent = epochBalance.totalSupply;
             epochBalance.inchBalance += amountPart;
 
             _token.firstUnprocessedEpoch += 1;
             _token.currentEpoch += 1;
         }
 
-
-        
         token.safeTransferFrom(msg.sender, address(this), amount);
         erc20.safeTransfer(msg.sender, returnAmount);
     }
@@ -250,7 +247,6 @@ contract FeeCollector is Ownable, BalanceAccounting {
         if (userBalance > 0) {
             _token.epochBalance[currentEpoch].balances[msg.sender] = 0;
             _token.epochBalance[currentEpoch].totalSupply -= userBalance;
-            _token.epochBalance[currentEpoch].tokenBalance -= userBalance;
             erc20.safeTransfer(msg.sender, userBalance);
         }
     }
@@ -271,17 +267,16 @@ contract FeeCollector is Ownable, BalanceAccounting {
             uint256 totalSupply = epochBalance.totalSupply;
             epochBalance.balances[msg.sender] = 0;
             epochBalance.totalSupply = totalSupply - share;
-            epochBalance.tokenBalance = _transferTokenShare(erc20, epochBalance.tokenBalance, share, totalSupply);
-            epochBalance.inchBalance = _transferTokenShare(token, epochBalance.inchBalance, share, totalSupply);
+            epochBalance.tokenSpent -= _transferTokenShare(erc20, epochBalance.tokenSpent, share, totalSupply);
+            epochBalance.inchBalance -= _transferTokenShare(token, epochBalance.inchBalance, share, totalSupply);
         }
     }
 
-    function _transferTokenShare(IERC20 _token, uint256 balance, uint256 share, uint256 totalSupply) private returns(uint256 newBalance) {
-        uint256 amount = balance * share / totalSupply;
+    function _transferTokenShare(IERC20 _token, uint256 balance, uint256 share, uint256 totalSupply) private returns(uint256 amount) {
+        amount = balance * share / totalSupply;
         if (amount > 0) {
             _token.safeTransfer(payable(msg.sender), amount);
         }
-        return balance - amount;
     }
 
     function _collectProcessedEpochs(address user, TokenInfo storage _token, uint256 currentEpoch) private {
@@ -333,8 +328,8 @@ contract FeeCollector is Ownable, BalanceAccounting {
         return tokenInfo[_token].epochBalance[epoch].totalSupply;
     }
 
-    function getTokenBalanceEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256) {
-        return tokenInfo[_token].epochBalance[epoch].tokenBalance;
+    function getTokenSpentEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256) {
+        return tokenInfo[_token].epochBalance[epoch].tokenSpent;
     }
 
     function getInchBalanceEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256) {
