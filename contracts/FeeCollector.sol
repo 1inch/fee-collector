@@ -100,11 +100,11 @@ contract FeeCollector is Ownable, BalanceAccounting {
         ];
     }
 
-    function price(IERC20 _token) public view returns(uint256 result) {
-        return priceForTime(block.timestamp, _token);
+    function value(IERC20 _token) public view returns(uint256 result) {
+        return valueForTime(block.timestamp, _token);
     }
 
-    function priceForTime(uint256 time, IERC20 _token) public view returns(uint256 result) {
+    function valueForTime(uint256 time, IERC20 _token) public view returns(uint256 result) {
         uint256[20] memory table = [
             _k00, _k01, _k02, _k03, _k04,
             _k05, _k06, _k07, _k08, _k09,
@@ -171,7 +171,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
         }
 
         uint256 feeWithAmount = (amount >= 0 ? fee + uint256(amount) : fee - uint256(-amount));
-        tokenInfo[erc20].lastPriceValue = priceForTime(block.timestamp, erc20) * feeWithAmount / (fee == 0 ? 1 : fee);
+        tokenInfo[erc20].lastPriceValue = valueForTime(block.timestamp, erc20) * feeWithAmount / (fee == 0 ? 1 : fee);
         tokenInfo[erc20].lastTime = block.timestamp;
     }
 
@@ -185,7 +185,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
         if (firstUnprocessedEpoch != _token.currentEpoch) {
             tokenBalance += (_token.epochBalance[_token.currentEpoch].totalSupply - _token.epochBalance[_token.currentEpoch].tokenSpent);
         }
-        uint256 _price = price(erc20);
+        uint256 _price = value(erc20);
         uint256 returnAmount = amount * tokenBalance / _price;
         require(tokenBalance >= returnAmount, "not enough tokens");
 
