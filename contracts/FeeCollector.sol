@@ -43,12 +43,12 @@ contract FeeCollector is Ownable, BalanceAccounting {
     }
 
     struct TokenInfo {
+        uint40 lastTime;
+        uint216 lastPriceValue;
         mapping(uint256 => EpochBalance) epochBalance;
         uint256 firstUnprocessedEpoch;
         uint256 currentEpoch;
         mapping(address => uint256) firstUserUnprocessedEpoch;
-        uint256 lastPriceValue;
-        uint256 lastTime;
     }
 
     mapping(IERC20 => TokenInfo) public tokenInfo;
@@ -62,8 +62,10 @@ contract FeeCollector is Ownable, BalanceAccounting {
         uint256 _deceleration
     ) {
         require(_deceleration > 0 && _deceleration < 1e36, "Invalid deceleration");
+
         token = _token;
         decimals = IERC20Metadata(address(_token)).decimals();
+        minValue = _minValue;
 
         uint256 z;
         _k00 = z = _deceleration;
@@ -87,8 +89,6 @@ contract FeeCollector is Ownable, BalanceAccounting {
         _k18 = z = z * z / 1e36;
         _k19 = z = z * z / 1e36;
         require(z * z < 1e36, "Deceleration is too slow");
-
-        minValue = _minValue;
     }
 
     function decelerationTable() public view returns(uint256[20] memory) {
@@ -104,7 +104,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
         return valueForTime(block.timestamp, _token);
     }
 
-    function valueForTime(uint256 time, IERC20 _token) public view returns(uint256 result) {
+    function valueForTimeSimple(uint256 time, IERC20 _token) public view returns(uint256 result) {
         uint256[20] memory table = [
             _k00, _k01, _k02, _k03, _k04,
             _k05, _k06, _k07, _k08, _k09,
@@ -112,14 +112,201 @@ contract FeeCollector is Ownable, BalanceAccounting {
             _k15, _k16, _k17, _k18, _k19
         ];
         uint256 lastTime = tokenInfo[_token].lastTime;
+        uint256 lastPriceValue = tokenInfo[_token].lastPriceValue;
         uint256 secs = Math.min(time - lastTime, _MAX_TIME);
-        result = Math.max(tokenInfo[_token].lastPriceValue, minValue);
+        result = Math.max(lastPriceValue, minValue);
         for (uint i = 0; secs > 0 && i < table.length; i++) {
             if (secs & 1 != 0) {
                 result = result * table[i] / 1e36;
             }
             if (result < minValue) return minValue;
             secs >>= 1;
+        }
+    }
+
+    function valueForTime(uint256 time, IERC20 _token) public view returns(uint256 result) {
+        uint256 secs = tokenInfo[_token].lastTime;
+        result = tokenInfo[_token].lastPriceValue;
+
+        secs = time - secs;
+        if (secs > _MAX_TIME) {
+            secs = _MAX_TIME;
+        }
+        if (result < minValue) {
+            result = minValue;
+        }
+
+        uint256 minValue_ = minValue;
+        assembly { // solhint-disable-line no-inline-assembly
+            if and(secs, 0x00000F) {
+                if and(secs, 0x000001) {
+                    result := div(mul(result, 999900000000000000000000000000000000), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x000002) {
+                    result := div(mul(result, 999800010000000000000000000000000000), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x000004) {
+                    result := div(mul(result, 999600059996000100000000000000000000), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x000008) {
+                    result := div(mul(result, 999200279944006999440027999200010000), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+            }
+
+            if and(secs, 0x0000F0) {
+                if and(secs, 0x000010) {
+                    result := div(mul(result, 998401199440181956328006856128688560), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x000020) {
+                    result := div(mul(result, 996804955043593987145855519554957648), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x000040) {
+                    result := div(mul(result, 993620118399461429792290614928235372), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x000080) {
+                    result := div(mul(result, 987280939688159750172898466482272707), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+            }
+
+            if and(secs, 0x000F00) {
+                if and(secs, 0x000100) {
+                    result := div(mul(result, 974723653871535730138973062438582481), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x000200) {
+                    result := div(mul(result, 950086201416677390961738571086337286), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x000400) {
+                    result := div(mul(result, 902663790122371280016479918855854806), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x000800) {
+                    result := div(mul(result, 814801917998084346828628782199508463), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+            }
+
+            if and(secs, 0x00F000) {
+                if and(secs, 0x001000) {
+                    result := div(mul(result, 663902165573356968243491567819400493), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x002000) {
+                    result := div(mul(result, 440766085452993090398118811102456830), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x004000) {
+                    result := div(mul(result, 194274742085555207178862579417407102), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x008000) {
+                    result := div(mul(result, 37742675412408995610179844414960649), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+            }
+
+            if and(secs, 0x0F0000) {
+                if and(secs, 0x010000) {
+                    result := div(mul(result, 1424509547286462546864068778806188), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x020000) {
+                    result := div(mul(result, 2029227450310282474813662564103), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x040000) {
+                    result := div(mul(result, 4117764045092769930387910), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x080000) {
+                    result := div(mul(result, 16955980731058), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+            }
         }
     }
 
@@ -171,26 +358,33 @@ contract FeeCollector is Ownable, BalanceAccounting {
         }
 
         uint256 feeWithAmount = (amount >= 0 ? fee + uint256(amount) : fee - uint256(-amount));
-        tokenInfo[erc20].lastPriceValue = valueForTime(block.timestamp, erc20) * feeWithAmount / (fee == 0 ? 1 : fee);
-        tokenInfo[erc20].lastTime = block.timestamp;
+        (
+            tokenInfo[erc20].lastTime,
+            tokenInfo[erc20].lastPriceValue
+        ) = (
+            uint40(block.timestamp),
+            uint216(valueForTime(block.timestamp, erc20) * feeWithAmount / (fee == 0 ? 1 : fee))
+        );
     }
 
     function trade(IERC20 erc20, uint256 amount) external {
         TokenInfo storage _token = tokenInfo[erc20];
+        uint256 tokenCurrentEpoch = _token.currentEpoch;
         uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
         EpochBalance storage epochBalance = _token.epochBalance[firstUnprocessedEpoch];
-        EpochBalance storage currentEpochBalance = _token.epochBalance[_token.currentEpoch];
+        EpochBalance storage currentEpochBalance = _token.epochBalance[tokenCurrentEpoch];
 
         uint256 tokenBalance = _token.epochBalance[firstUnprocessedEpoch].totalSupply - _token.epochBalance[firstUnprocessedEpoch].tokenSpent;
-        if (firstUnprocessedEpoch != _token.currentEpoch) {
-            tokenBalance += (_token.epochBalance[_token.currentEpoch].totalSupply - _token.epochBalance[_token.currentEpoch].tokenSpent);
+        if (firstUnprocessedEpoch != tokenCurrentEpoch) {
+            tokenBalance += (_token.epochBalance[tokenCurrentEpoch].totalSupply - _token.epochBalance[tokenCurrentEpoch].tokenSpent);
         }
         uint256 _price = value(erc20);
         uint256 returnAmount = amount * tokenBalance / _price;
         require(tokenBalance >= returnAmount, "not enough tokens");
 
-        if (_token.firstUnprocessedEpoch == _token.currentEpoch) {
-            _token.currentEpoch += 1;
+        if (_token.firstUnprocessedEpoch == tokenCurrentEpoch) {
+            tokenCurrentEpoch += 1;
+            _token.currentEpoch = tokenCurrentEpoch;
         }
 
         _updateTokenState(erc20, -int256(returnAmount));
@@ -212,7 +406,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
             epochBalance.inchBalance += amountPart;
 
             _token.firstUnprocessedEpoch += 1;
-            _token.currentEpoch += 1;
+            _token.currentEpoch = tokenCurrentEpoch + 1;
         }
 
         token.safeTransferFrom(msg.sender, address(this), amount);

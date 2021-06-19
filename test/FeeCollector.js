@@ -1,5 +1,6 @@
 const { BN, ether } = require('@openzeppelin/test-helpers');
 const { expect } = require('chai');
+const { profileEVM } = require('./helpers/profileEVM');
 
 const TokenMock = artifacts.require('TokenMock');
 const FeeCollector = artifacts.require('FeeCollector');
@@ -72,6 +73,26 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
 
         await this.token.mint(wallet2, ether('1000000'));
         await this.token.approve(this.feeCollector.address, ether('1000000'), { from: wallet2 });
+    });
+
+    describe('Gas measurements', async function () {
+        it('should be cheap', async function () {
+            await this.feeCollector.contract.methods.valueForTime(0, this.weth.address).send({ from: _ });
+            await this.feeCollector.contract.methods.valueForTime(1000, this.weth.address).send({ from: _ });
+            await this.feeCollector.contract.methods.valueForTime(1000000, this.weth.address).send({ from: _ });
+            const receipt = await this.feeCollector.contract.methods.valueForTime(0xFFFFF, this.weth.address).send({ from: _ });
+            if (process.env.npm_lifecycle_event !== 'coverage') {
+                expect(await profileEVM(receipt.transactionHash, 'SLOAD')).equal(1);
+            }
+
+            await this.feeCollector.contract.methods.valueForTimeSimple(0, this.weth.address).send({ from: _ });
+            await this.feeCollector.contract.methods.valueForTimeSimple(1000, this.weth.address).send({ from: _ });
+            await this.feeCollector.contract.methods.valueForTimeSimple(1000000, this.weth.address).send({ from: _ });
+            const receipt2 = await this.feeCollector.contract.methods.valueForTimeSimple(0xFFFFF, this.weth.address).send({ from: _ });
+            if (process.env.npm_lifecycle_event !== 'coverage') {
+                expect(await profileEVM(receipt2.transactionHash, 'SLOAD')).equal(1);
+            }
+        });
     });
 
     describe('Init', async function () {
