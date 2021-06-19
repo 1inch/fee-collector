@@ -54,9 +54,6 @@ contract FeeCollector is Ownable, BalanceAccounting {
     mapping(IERC20 => TokenInfo) public tokenInfo;
 
     uint256 public immutable minValue;
-    uint256 public lastTokenPriceValueDefault;
-    uint256 public lastTokenTimeDefault;
-
     uint8 public immutable decimals;
 
     constructor(
@@ -91,8 +88,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
         _k19 = z = z * z / 1e36;
         require(z * z < 1e36, "Deceleration is too slow");
 
-        minValue = lastTokenPriceValueDefault = _minValue;
-        lastTokenTimeDefault = block.timestamp;
+        minValue = _minValue;
     }
 
     function decelerationTable() public view returns(uint256[20] memory) {
