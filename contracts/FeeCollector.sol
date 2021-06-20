@@ -386,51 +386,17 @@ contract FeeCollector is
         );
     }
 
-//    function func_somethingHere(address from, address to, uint256 returnAmount, IERC20 erc20) external onlyImmutableOwner {
-//        require(to == address(this), "Invalid tokens source");
-//
-//        TokenInfo storage _token = tokenInfo[erc20];
-//        uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
-//        EpochBalance storage epochBalance = _token.epochBalance[firstUnprocessedEpoch];
-//        EpochBalance storage currentEpochBalance = _token.epochBalance[_token.currentEpoch];
-//
-//        uint256 _price = tokenPriceInInches(erc20);
-//        uint256 amount = returnAmount * _price;
-//
-//        if (_token.firstUnprocessedEpoch == _token.currentEpoch) {
-//            _token.currentEpoch = _token.currentEpoch + (1);
-//        }
-//
-//        if (returnAmount <= epochBalance.tokenBalance) {
-//            if (returnAmount == epochBalance.tokenBalance) {
-//                _token.firstUnprocessedEpoch += 1;
-//            }
-//
-//            epochBalance.tokenBalance -= returnAmount;
-//            epochBalance.inchBalance += amount;
-//        } else {
-//            require(firstUnprocessedEpoch + 1 == _token.currentEpoch, "not enough tokens");
-//            require(epochBalance.tokenBalance + currentEpochBalance.tokenBalance >= returnAmount, "not enough tokens");
-//
-//            uint256 amountPart = epochBalance.tokenBalance * amount / returnAmount;
-//
-//            currentEpochBalance.tokenBalance -= (returnAmount - epochBalance.tokenBalance);
-//            currentEpochBalance.inchBalance += (amount - amountPart);
-//
-//            epochBalance.tokenBalance = 0;
-//            epochBalance.inchBalance += amountPart;
-//
-//            _token.firstUnprocessedEpoch += 1;
-//            _token.currentEpoch += 1;
-//        }
-//
-//        token.transferFrom(msg.sender, address(this), amount);
-//        erc20.transfer(msg.sender, returnAmount);
-//    }
+    function getMakerAmount(IERC20 erc20, uint256 swapTakerAmount) external view returns(uint256) {
+        return swapTakerAmount * getTokenBalance(erc20) / value(erc20);
+    }
 
-    function transferFrom(address sender, address recipient, uint256 amount) external onlyImmutableOwner returns (bool) {
-        require(recipient == address(this), "FeeCollector: invalid recipient");
-        return token.transferFrom(sender, address(this), amount);
+    function getTakerAmount(IERC20 erc20, uint256 swapMakerAmount) external view returns(uint256) {
+        return swapMakerAmount * value(erc20) / getTokenBalance(erc20);
+    }
+
+    function func_somethingHere(address from, address to, uint256 amount, IERC20 erc20) external onlyImmutableOwner {
+        require(to == address(this), "FeeCollector: invalid tokens destination");
+        erc20.transferFrom(from, to, amount);
     }
 
     function isValidSignature(bytes32 hash, bytes memory signature) public view override returns(bytes4) {
@@ -438,42 +404,49 @@ contract FeeCollector is
 
         require(
             _hash(order) == hash &&
+            order.makerAsset == address(this) &&
+            order.takerAsset == address(token) &&
             order.makerAssetData.decodeAddress(_TO_INDEX) == address(this) &&
             order.interaction.length > 0,
             "FeeCollector: invalid signature"
         );
-//
-//        bytes memory getTakerFunc = order.getTakerAmount.decodeBytes(1);
-//
-//        require(
-//            getTakerFunc.decodeSelector() == this.tokenForInches.selector &&
-//            getTakerFunc.decodeAddress(0) == order.takerAsset,
-//            "FeeCollector: invalid signature"
-//        );
+
+        //bytes memory getMakerAmountFunc = order.getTakerAmount.decodeBytes(1);
+        //bytes memory getTakerAmountFunc = order.getTakerAmount.decodeBytes(1);
 
         return this.isValidSignature.selector;
     }
 
+    function notifyFillOrder(IERC20 makerAsset, IERC20 takerAsset, uint256 makingAmount, uint256 takingAmount, bytes calldata interaction) public onlyImmutableOwner {
+        require(address(makerAsset) == address(this), "Invalid maker asset");
+        require(takerAsset == token, "Invalid taker asset");
+        (address userAsset) = abi.decode(interaction, (address));
+        exchangeBalances(IERC20(userAsset), makingAmount, takingAmount);
+    }
+
     function trade(IERC20 erc20, uint256 amount) external {
+        uint256 tokenBalance = getTokenBalance(erc20);
+        uint256 _price = value(erc20);
+        uint256 returnAmount = amount * tokenBalance / _price;
+        exchangeBalances(erc20, amount, returnAmount);
+
+        token.safeTransferFrom(msg.sender, address(this), amount);
+        erc20.safeTransfer(msg.sender, returnAmount);
+    }
+
+    function exchangeBalances(IERC20 erc20, uint256 amount, uint256 returnAmount) private {
         TokenInfo storage _token = tokenInfo[erc20];
         uint256 tokenCurrentEpoch = _token.currentEpoch;
         uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
         EpochBalance storage epochBalance = _token.epochBalance[firstUnprocessedEpoch];
         EpochBalance storage currentEpochBalance = _token.epochBalance[tokenCurrentEpoch];
-
-        uint256 tokenBalance = _token.epochBalance[firstUnprocessedEpoch].totalSupply - _token.epochBalance[firstUnprocessedEpoch].tokenSpent;
-        if (firstUnprocessedEpoch != tokenCurrentEpoch) {
-            tokenBalance += (_token.epochBalance[tokenCurrentEpoch].totalSupply - _token.epochBalance[tokenCurrentEpoch].tokenSpent);
-        }
-        uint256 _price = value(erc20);
-        uint256 returnAmount = amount * tokenBalance / _price;
+        uint256 tokenBalance = getTokenBalanceRaw(_token, tokenCurrentEpoch, firstUnprocessedEpoch);
         require(tokenBalance >= returnAmount, "not enough tokens");
 
         if (_token.firstUnprocessedEpoch == tokenCurrentEpoch) {
             tokenCurrentEpoch += 1;
             _token.currentEpoch = tokenCurrentEpoch;
         }
-
         _updateTokenState(erc20, -int256(returnAmount));
 
         if (returnAmount <= epochBalance.totalSupply - epochBalance.tokenSpent) {
@@ -495,9 +468,20 @@ contract FeeCollector is
             _token.firstUnprocessedEpoch += 1;
             _token.currentEpoch = tokenCurrentEpoch + 1;
         }
+    }
 
-        token.safeTransferFrom(msg.sender, address(this), amount);
-        erc20.safeTransfer(msg.sender, returnAmount);
+    function getTokenBalance(IERC20 erc20) private view returns (uint256) {
+        TokenInfo storage _token = tokenInfo[erc20];
+        uint256 tokenCurrentEpoch = _token.currentEpoch;
+        uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
+        return getTokenBalanceRaw(_token, tokenCurrentEpoch, firstUnprocessedEpoch);
+    }
+
+    function getTokenBalanceRaw(TokenInfo storage _token, uint256 tokenCurrentEpoch, uint256 firstUnprocessedEpoch) private view returns (uint256 tokenBalance) {
+        tokenBalance = _token.epochBalance[firstUnprocessedEpoch].totalSupply - _token.epochBalance[firstUnprocessedEpoch].tokenSpent;
+        if (firstUnprocessedEpoch != tokenCurrentEpoch) {
+            tokenBalance += (_token.epochBalance[tokenCurrentEpoch].totalSupply - _token.epochBalance[tokenCurrentEpoch].tokenSpent);
+        }
     }
 
     function claim(IERC20[] memory pools) external {
