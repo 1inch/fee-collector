@@ -51,11 +51,11 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
     const privatekey = '2bdd21761a483f71054e14f5b827213567971c676928d9a1808cbfa4b7501201';
     const account = Wallet.fromPrivateKey(Buffer.from(privatekey, 'hex'));
 
-    function buildOrder (exchange, makerAsset, takerAsset, makerAmount, takerAmount, taker, predicate = '0x', permit = '0x', interaction = '0x') {
+    function buildOrder (exchange, makerAsset, takerAsset, makerAmount, takerAmount, taker, predicate = '0x', permit = '0x', interaction = '0x00') {
         return buildOrderWithSalt(exchange, '1', makerAsset, takerAsset, makerAmount, takerAmount, taker, predicate, permit, interaction);
     }
 
-    function buildOrderWithSalt (exchange, salt, makerAsset, takerAsset, makerAmount, takerAmount, taker, predicate = '0x', permit = '0x', interaction = '0x') {
+    function buildOrderWithSalt (exchange, salt, makerAsset, takerAsset, makerAmount, takerAmount, taker, predicate = '0x', permit = '0x', interaction = '0x00') {
         return {
             salt: salt,
             makerAsset: makerAsset.address,

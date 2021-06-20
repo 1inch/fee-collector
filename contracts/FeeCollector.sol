@@ -243,11 +243,18 @@ contract FeeCollector is
 //        erc20.transfer(msg.sender, returnAmount);
 //    }
 
+    function transferFrom(address sender, address recipient, uint256 amount) external onlyImmutableOwner returns (bool) {
+        require(recipient == address(this), "FeeCollector: invalid recipient");
+        return token.transferFrom(sender, address(this), amount);
+    }
+
     function isValidSignature(bytes32 hash, bytes memory signature) public view override returns(bytes4) {
         Types.Order memory order = abi.decode(signature, (Types.Order));
 
         require(
-            _hash(order) == hash,
+            _hash(order) == hash &&
+            order.makerAssetData.decodeAddress(_TO_INDEX) == address(this) &&
+            order.interaction.length > 0,
             "FeeCollector: invalid signature"
         );
 //
