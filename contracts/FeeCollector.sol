@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/interfaces/IERC1271.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "./helpers/EIP712Alien.sol";
 import "./helpers/ImmutableOwner.sol";
@@ -18,7 +19,7 @@ contract FeeCollector is
     IERC1271,
     ImmutableOwner,
     EIP712Alien {
-    using UniERC20 for IERC20;
+    using SafeERC20 for IERC20;
     using ArgumentsDecoder for bytes;
 
     bytes32 constant public _LIMIT_ORDER_TYPEHASH = keccak256(
@@ -52,29 +53,27 @@ contract FeeCollector is
     uint256 private immutable _k17;
     uint256 private immutable _k18;
     uint256 private immutable _k19;
+    uint256 private constant _MAX_TIME = 0xfffff;
 
     struct EpochBalance {
         mapping(address => uint256) balances;
         uint256 totalSupply;
-        uint256 tokenBalance;
+        uint256 tokenSpent;
         uint256 inchBalance;
     }
 
     struct TokenInfo {
+        uint40 lastTime;
+        uint216 lastPriceValue;
         mapping(uint256 => EpochBalance) epochBalance;
         uint256 firstUnprocessedEpoch;
         uint256 currentEpoch;
         mapping(address => uint256) firstUserUnprocessedEpoch;
-        uint256 lastPriceValue;
-        uint256 lastTime;
     }
 
     mapping(IERC20 => TokenInfo) public tokenInfo;
 
-    uint256 public minValue;
-    uint256 public lastTokenPriceValueDefault;
-    uint256 public lastTokenTimeDefault;
-
+    uint256 public immutable minValue;
     uint8 public immutable decimals;
 
     constructor(
@@ -86,6 +85,7 @@ contract FeeCollector is
         require(_deceleration > 0 && _deceleration < _FIXED_POINT_MULTIPLIER, "Invalid deceleration");
         token = _token;
         decimals = IERC20Metadata(address(_token)).decimals();
+        minValue = _minValue;
 
         uint256 z;
         _k00 = z = _deceleration;
@@ -109,9 +109,6 @@ contract FeeCollector is
         _k18 = z = z * z / _FIXED_POINT_MULTIPLIER;
         _k19 = z = z * z / _FIXED_POINT_MULTIPLIER;
         require(z * z < _FIXED_POINT_MULTIPLIER, "Deceleration is too slow");
-
-        minValue = lastTokenPriceValueDefault = _minValue;
-        lastTokenTimeDefault = block.timestamp;
     }
 
     function decelerationTable() public view returns(uint256[20] memory) {
@@ -123,32 +120,21 @@ contract FeeCollector is
         ];
     }
 
-    function tokenPriceInInches(IERC20 _token) public view returns(uint256) {
-        return tokenPriceForTime(block.timestamp, _token, false);
+    function value(IERC20 _token) public view returns(uint256 result) {
+        return valueForTime(block.timestamp, _token);
     }
 
-    function inchPriceInToken(IERC20 _token) public view returns(uint256) {
-        return tokenPriceForTime(block.timestamp, _token, true);
-    }
-
-    function tokenForInches(IERC20 _token, uint256 amount) public view returns(uint256) {
-        return tokenPriceInInches(_token) * amount;
-    }
-
-    function inchesForToken(IERC20 _token, uint256 amount) public view returns(uint256) {
-        return inchPriceInToken(_token) * amount;
-    }
-
-    function tokenPriceForTime(uint256 time, IERC20 _token, bool reverse) public view returns(uint256 result) {
+    function valueForTimeSimple(uint256 time, IERC20 _token) public view returns(uint256 result) {
         uint256[20] memory table = [
             _k00, _k01, _k02, _k03, _k04,
             _k05, _k06, _k07, _k08, _k09,
             _k10, _k11, _k12, _k13, _k14,
             _k15, _k16, _k17, _k18, _k19
         ];
-        uint256 lastTime = (tokenInfo[_token].lastTime == 0 ? lastTokenTimeDefault : tokenInfo[_token].lastTime);
-        uint256 secs = time - lastTime;
-        result = (tokenInfo[_token].lastPriceValue == 0 ? lastTokenPriceValueDefault : tokenInfo[_token].lastPriceValue);
+        uint256 lastTime = tokenInfo[_token].lastTime;
+        uint256 lastPriceValue = tokenInfo[_token].lastPriceValue;
+        uint256 secs = Math.min(time - lastTime, _MAX_TIME);
+        result = Math.max(lastPriceValue, minValue);
         for (uint i = 0; secs > 0 && i < table.length; i++) {
             if (secs & 1 != 0) {
                 result = result * table[i] / _FIXED_POINT_MULTIPLIER;
@@ -161,12 +147,198 @@ contract FeeCollector is
         }
     }
 
+    function valueForTime(uint256 time, IERC20 _token) public view returns(uint256 result) {
+        uint256 secs = tokenInfo[_token].lastTime;
+        result = tokenInfo[_token].lastPriceValue;
+
+        secs = time - secs;
+        if (secs > _MAX_TIME) {
+            secs = _MAX_TIME;
+        }
+        if (result < minValue) {
+            result = minValue;
+        }
+
+        uint256 minValue_ = minValue;
+        assembly { // solhint-disable-line no-inline-assembly
+            if and(secs, 0x00000F) {
+                if and(secs, 0x000001) {
+                    result := div(mul(result, 999900000000000000000000000000000000), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x000002) {
+                    result := div(mul(result, 999800010000000000000000000000000000), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x000004) {
+                    result := div(mul(result, 999600059996000100000000000000000000), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x000008) {
+                    result := div(mul(result, 999200279944006999440027999200010000), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+            }
+
+            if and(secs, 0x0000F0) {
+                if and(secs, 0x000010) {
+                    result := div(mul(result, 998401199440181956328006856128688560), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x000020) {
+                    result := div(mul(result, 996804955043593987145855519554957648), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x000040) {
+                    result := div(mul(result, 993620118399461429792290614928235372), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x000080) {
+                    result := div(mul(result, 987280939688159750172898466482272707), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+            }
+
+            if and(secs, 0x000F00) {
+                if and(secs, 0x000100) {
+                    result := div(mul(result, 974723653871535730138973062438582481), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x000200) {
+                    result := div(mul(result, 950086201416677390961738571086337286), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x000400) {
+                    result := div(mul(result, 902663790122371280016479918855854806), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x000800) {
+                    result := div(mul(result, 814801917998084346828628782199508463), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+            }
+
+            if and(secs, 0x00F000) {
+                if and(secs, 0x001000) {
+                    result := div(mul(result, 663902165573356968243491567819400493), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x002000) {
+                    result := div(mul(result, 440766085452993090398118811102456830), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x004000) {
+                    result := div(mul(result, 194274742085555207178862579417407102), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x008000) {
+                    result := div(mul(result, 37742675412408995610179844414960649), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+            }
+
+            if and(secs, 0x0F0000) {
+                if and(secs, 0x010000) {
+                    result := div(mul(result, 1424509547286462546864068778806188), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x020000) {
+                    result := div(mul(result, 2029227450310282474813662564103), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x040000) {
+                    result := div(mul(result, 4117764045092769930387910), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+
+                if and(secs, 0x080000) {
+                    result := div(mul(result, 16955980731058), 1000000000000000000000000000000000000)
+                    if lt(result, minValue_) {
+                        result := minValue_
+                        secs := 0
+                    }
+                }
+            }
+        }
+    }
+
     function name() external view returns(string memory) {
-        return string(abi.encodePacked("FeeCollector: ", token.uniName()));
+        return string(abi.encodePacked("FeeCollector: ", IERC20Metadata(address(token)).name()));
     }
 
     function symbol() external view returns(string memory) {
-        return string(abi.encodePacked("fee-", token.uniSymbol()));
+        return string(abi.encodePacked("fee-", IERC20Metadata(address(token)).symbol()));
     }
 
     function updateRewards(address[] calldata receivers, uint256[] calldata amounts) external {
@@ -180,7 +352,7 @@ contract FeeCollector is
     }
 
     function updateRewardNonLP(IERC20 erc20, address referral, uint256 amount) external {
-        erc20.transferFrom(msg.sender, address(this), amount);
+        erc20.safeTransferFrom(msg.sender, address(this), amount);
         _updateReward(erc20, referral, amount);
     }
 
@@ -188,17 +360,34 @@ contract FeeCollector is
         TokenInfo storage _token = tokenInfo[erc20];
         uint256 currentEpoch = _token.currentEpoch;
 
-        uint256 fee = _token.epochBalance[currentEpoch].tokenBalance;
-        tokenInfo[erc20].lastPriceValue = tokenPriceForTime(block.timestamp, erc20, false) * (fee + amount) / (fee == 0 ? 1 : fee);
-        tokenInfo[erc20].lastTime = block.timestamp;
+        _updateTokenState(erc20, int256(amount));
 
         // Add new reward to current epoch
         _token.epochBalance[currentEpoch].balances[referral] += amount;
         _token.epochBalance[currentEpoch].totalSupply += amount;
-        _token.epochBalance[currentEpoch].tokenBalance += amount;
 
         // Collect all processed epochs and advance user token epoch
         _collectProcessedEpochs(referral, _token, currentEpoch);
+    }
+
+    function _updateTokenState(IERC20 erc20, int256 amount) private {
+        TokenInfo storage _token = tokenInfo[erc20];
+        uint256 currentEpoch = _token.currentEpoch;
+        uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
+
+        uint256 fee = _token.epochBalance[firstUnprocessedEpoch].totalSupply - _token.epochBalance[firstUnprocessedEpoch].tokenSpent;
+        if (firstUnprocessedEpoch != currentEpoch) {
+            fee += (_token.epochBalance[currentEpoch].totalSupply - _token.epochBalance[currentEpoch].tokenSpent);
+        }
+
+        uint256 feeWithAmount = (amount >= 0 ? fee + uint256(amount) : fee - uint256(-amount));
+        (
+            tokenInfo[erc20].lastTime,
+            tokenInfo[erc20].lastPriceValue
+        ) = (
+            uint40(block.timestamp),
+            uint216(valueForTime(block.timestamp, erc20) * feeWithAmount / (fee == 0 ? 1 : fee))
+        );
     }
 
 //    function func_somethingHere(address from, address to, uint256 returnAmount, IERC20 erc20) external onlyImmutableOwner {
@@ -271,42 +460,48 @@ contract FeeCollector is
 
     function trade(IERC20 erc20, uint256 amount) external {
         TokenInfo storage _token = tokenInfo[erc20];
+        uint256 tokenCurrentEpoch = _token.currentEpoch;
         uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
         EpochBalance storage epochBalance = _token.epochBalance[firstUnprocessedEpoch];
-        EpochBalance storage currentEpochBalance = _token.epochBalance[_token.currentEpoch];
+        EpochBalance storage currentEpochBalance = _token.epochBalance[tokenCurrentEpoch];
 
-        uint256 _price = tokenPriceInInches(erc20);
-        uint256 returnAmount = amount / _price;
+        uint256 tokenBalance = _token.epochBalance[firstUnprocessedEpoch].totalSupply - _token.epochBalance[firstUnprocessedEpoch].tokenSpent;
+        if (firstUnprocessedEpoch != tokenCurrentEpoch) {
+            tokenBalance += (_token.epochBalance[tokenCurrentEpoch].totalSupply - _token.epochBalance[tokenCurrentEpoch].tokenSpent);
+        }
+        uint256 _price = value(erc20);
+        uint256 returnAmount = amount * tokenBalance / _price;
+        require(tokenBalance >= returnAmount, "not enough tokens");
 
-        if (_token.firstUnprocessedEpoch == _token.currentEpoch) {
-            _token.currentEpoch += 1;
+        if (_token.firstUnprocessedEpoch == tokenCurrentEpoch) {
+            tokenCurrentEpoch += 1;
+            _token.currentEpoch = tokenCurrentEpoch;
         }
 
-        if (returnAmount <= epochBalance.tokenBalance) {
-            if (returnAmount == epochBalance.tokenBalance) {
+        _updateTokenState(erc20, -int256(returnAmount));
+
+        if (returnAmount <= epochBalance.totalSupply - epochBalance.tokenSpent) {
+            if (returnAmount == epochBalance.totalSupply - epochBalance.tokenSpent) {
                 _token.firstUnprocessedEpoch += 1;
             }
 
-            epochBalance.tokenBalance -= returnAmount;
+            epochBalance.tokenSpent += returnAmount;
             epochBalance.inchBalance += amount;
         } else {
-            require(firstUnprocessedEpoch + 1 == _token.currentEpoch, "not enough tokens");
-            require(epochBalance.tokenBalance + currentEpochBalance.tokenBalance >= returnAmount, "not enough tokens");
+            uint256 amountPart = (epochBalance.totalSupply - epochBalance.tokenSpent) * amount / returnAmount;
 
-            uint256 amountPart = epochBalance.tokenBalance * amount / returnAmount;
-
-            currentEpochBalance.tokenBalance -= (returnAmount - epochBalance.tokenBalance);
+            currentEpochBalance.tokenSpent += (returnAmount - (epochBalance.totalSupply - epochBalance.tokenSpent));
             currentEpochBalance.inchBalance += (amount - amountPart);
 
-            epochBalance.tokenBalance = 0;
+            epochBalance.tokenSpent = epochBalance.totalSupply;
             epochBalance.inchBalance += amountPart;
 
             _token.firstUnprocessedEpoch += 1;
-            _token.currentEpoch += 1;
+            _token.currentEpoch = tokenCurrentEpoch + 1;
         }
 
-        token.transferFrom(msg.sender, address(this), amount);
-        erc20.transfer(msg.sender, returnAmount);
+        token.safeTransferFrom(msg.sender, address(this), amount);
+        erc20.safeTransfer(msg.sender, returnAmount);
     }
 
     function claim(IERC20[] memory pools) external {
@@ -321,7 +516,7 @@ contract FeeCollector is
             unchecked {
                 uint256 withdrawn = userBalance - 1;
                 _burn(msg.sender, withdrawn);
-                token.transfer(msg.sender, withdrawn);
+                token.safeTransfer(msg.sender, withdrawn);
             }
         }
     }
@@ -333,8 +528,7 @@ contract FeeCollector is
         if (userBalance > 0) {
             _token.epochBalance[currentEpoch].balances[msg.sender] = 0;
             _token.epochBalance[currentEpoch].totalSupply -= userBalance;
-            _token.epochBalance[currentEpoch].tokenBalance -= userBalance;
-            erc20.transfer(msg.sender, userBalance);
+            erc20.safeTransfer(msg.sender, userBalance);
         }
     }
 
@@ -354,17 +548,16 @@ contract FeeCollector is
             uint256 totalSupply = epochBalance.totalSupply;
             epochBalance.balances[msg.sender] = 0;
             epochBalance.totalSupply = totalSupply - share;
-            epochBalance.tokenBalance = _transferTokenShare(erc20, epochBalance.tokenBalance, share, totalSupply);
-            epochBalance.inchBalance = _transferTokenShare(token, epochBalance.inchBalance, share, totalSupply);
+            epochBalance.tokenSpent -= _transferTokenShare(erc20, epochBalance.tokenSpent, share, totalSupply);
+            epochBalance.inchBalance -= _transferTokenShare(token, epochBalance.inchBalance, share, totalSupply);
         }
     }
 
-    function _transferTokenShare(IERC20 _token, uint256 balance, uint256 share, uint256 totalSupply) private returns(uint256 newBalance) {
-        uint256 amount = balance * share / totalSupply;
+    function _transferTokenShare(IERC20 _token, uint256 balance, uint256 share, uint256 totalSupply) private returns(uint256 amount) {
+        amount = balance * share / totalSupply;
         if (amount > 0) {
-            _token.uniTransfer(payable(msg.sender), amount);
+            _token.safeTransfer(payable(msg.sender), amount);
         }
-        return balance - amount;
     }
 
     function _collectProcessedEpochs(address user, TokenInfo storage _token, uint256 currentEpoch) private {
@@ -416,8 +609,8 @@ contract FeeCollector is
         return tokenInfo[_token].epochBalance[epoch].totalSupply;
     }
 
-    function getTokenBalanceEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256) {
-        return tokenInfo[_token].epochBalance[epoch].tokenBalance;
+    function getTokenSpentEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256) {
+        return tokenInfo[_token].epochBalance[epoch].tokenSpent;
     }
 
     function getInchBalanceEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256) {
