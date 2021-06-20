@@ -9,7 +9,6 @@ import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "./helpers/EIP712Alien.sol";
 import "./helpers/ImmutableOwner.sol";
 import "./libraries/ArgumentsDecoder.sol";
-import "./libraries/UniERC20.sol";
 import "./utils/BalanceAccounting.sol";
 import "./libraries/Types.sol";
 
@@ -141,9 +140,6 @@ contract FeeCollector is
             }
             if (result < minValue) return minValue;
             secs >>= 1;
-        }
-        if (reverse) {
-            result = (_FIXED_POINT_MULTIPLIER * _FIXED_POINT_MULTIPLIER) / result;
         }
     }
 

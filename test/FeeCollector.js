@@ -1,8 +1,13 @@
 const { BN, ether } = require('@openzeppelin/test-helpers');
 const { expect } = require('chai');
+const { bufferToHex } = require('ethereumjs-util');
+const ethSigUtil = require('eth-sig-util');
+const Wallet = require('ethereumjs-wallet').default;
+const { ABIOrder, buildOrderData } = require('./helpers/orderUtils');
+const { cutLastArg } = require('./helpers/utils');
 const { profileEVM } = require('./helpers/profileEVM');
-
 const TokenMock = artifacts.require('TokenMock');
+const LimitOrderProtocolMock = artifacts.require('LimitOrderProtocolMock');
 const FeeCollector = artifacts.require('FeeCollector');
 
 function toBN (num) {
@@ -57,14 +62,38 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
     const bn1e36 = toBN('1000000000000000000000000000000000000');
     const decelerationBN = toBN(deceleration);
 
+    const privatekey = '2bdd21761a483f71054e14f5b827213567971c676928d9a1808cbfa4b7501201';
+    const account = Wallet.fromPrivateKey(Buffer.from(privatekey, 'hex'));
+
+    function buildOrder (exchange, makerAsset, takerAsset, makerAmount, takerAmount, taker, predicate = '0x', permit = '0x', interaction = '0x00') {
+        return buildOrderWithSalt(exchange, '1', makerAsset, takerAsset, makerAmount, takerAmount, taker, predicate, permit, interaction);
+    }
+
+    function buildOrderWithSalt (exchange, salt, makerAsset, takerAsset, makerAmount, takerAmount, taker, predicate = '0x', permit = '0x', interaction = '0x00') {
+        return {
+            salt: salt,
+            makerAsset: makerAsset.address,
+            takerAsset: takerAsset.address,
+            makerAssetData: makerAsset.contract.methods.transferFrom(wallet, taker, makerAmount).encodeABI(),
+            takerAssetData: takerAsset.contract.methods.transferFrom(taker, wallet, takerAmount).encodeABI(),
+            getMakerAmount: cutLastArg(exchange.contract.methods.getMakerAmount(makerAmount, takerAmount, 0).encodeABI()),
+            getTakerAmount: cutLastArg(exchange.contract.methods.getTakerAmount(makerAmount, takerAmount, 0).encodeABI()),
+            predicate: predicate,
+            permit: permit,
+            interaction: interaction,
+        };
+    }
+
     before(async function () {
     });
 
     beforeEach(async function () {
         this.weth = await TokenMock.new('WETH', 'WETH');
         this.token = await TokenMock.new('INCH', 'INCH');
+        this.swap = await LimitOrderProtocolMock.new();
+        this.chainId = await this.weth.getChainId();
 
-        this.feeCollector = await FeeCollector.new(this.token.address, minValue, deceleration);
+        this.feeCollector = await FeeCollector.new(this.token.address, minValue, deceleration, this.swap.address);
 
         await this.weth.mint(wallet, ether('1000000'));
         await this.weth.approve(this.feeCollector.address, ether('1000000'), { from: wallet });
