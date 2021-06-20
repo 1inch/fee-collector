@@ -65,19 +65,15 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
     const privatekey = '2bdd21761a483f71054e14f5b827213567971c676928d9a1808cbfa4b7501201';
     const account = Wallet.fromPrivateKey(Buffer.from(privatekey, 'hex'));
 
-    function buildOrder (exchange, feeCollector, takerAsset, makerAmount, takerAmount, taker, predicate = '0x', permit = '0x', interaction = web3.eth.abi.encodeParameter('bytes', wallet)) {
-        return buildOrderWithSalt(exchange, '1', feeCollector, takerAsset, makerAmount, takerAmount, taker, predicate, permit, interaction);
-    }
-
-    function buildOrderWithSalt (exchange, salt, feeCollector, takerAsset, makerAmount, takerAmount, taker, predicate, permit, interaction) {
+    function buildOrderWithSalt (exchange, salt, feeCollector, takerAsset, makerAmount, takerAmount, taker, predicate, permit, interaction, realToken) {
         return {
             salt: salt,
             makerAsset: feeCollector.address,
             takerAsset: takerAsset.address,
             makerAssetData: feeCollector.contract.methods.transferFrom(wallet, taker, makerAmount, feeCollector.address).encodeABI(),
             takerAssetData: takerAsset.contract.methods.transferFrom(taker, wallet, takerAmount).encodeABI(),
-            getMakerAmount: feeCollector.contract.methods.getMakerAmount(wallet, makerAmount).encodeABI(),
-            getTakerAmount: feeCollector.contract.methods.getTakerAmount(taker, takerAmount).encodeABI(),
+            getMakerAmount: exchange.contract.methods.arbitraryStaticCall(feeCollector.address, cutLastArg(feeCollector.contract.methods.getMakerAmount(realToken.address, 0).encodeABI())).encodeABI(),
+            getTakerAmount: exchange.contract.methods.arbitraryStaticCall(feeCollector.address, cutLastArg(feeCollector.contract.methods.getTakerAmount(realToken.address, 0).encodeABI())).encodeABI(),
             predicate: predicate,
             permit: permit,
             interaction: interaction,
@@ -102,6 +98,9 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
 
         await this.token.mint(wallet2, ether('1000000'));
         await this.token.approve(this.feeCollector.address, ether('1000000'), { from: wallet2 });
+
+        this.buildOrder = (exchange, feeCollector, takerAsset, makerAmount, takerAmount, taker, predicate = '0x', permit = '0x', interaction = web3.eth.abi.encodeParameter('bytes', wallet), realToken = this.weth) =>
+             buildOrderWithSalt(exchange, '1', feeCollector, takerAsset, makerAmount, takerAmount, taker, predicate, permit, interaction, realToken);
     });
 
     // describe('Gas measurements', async function () {
@@ -148,8 +147,8 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
 
     describe('LimitOrderProtocol', async function () {
         it('isValidSignature', async function () {
-            const order = buildOrder(this.swap, this.feeCollector, this.token, 1, 1, this.feeCollector.address);
-            console.log(JSON.stringify(order))
+            const order = this.buildOrder(this.swap, this.feeCollector, this.token, 1, 1, this.feeCollector.address);
+            console.log(this.weth.address)
             const data = buildOrderData(this.chainId, this.swap.address, order);
             const orderHash = bufferToHex(ethSigUtil.TypedDataUtils.sign(data));
             const signature = web3.eth.abi.encodeParameter(ABIOrder, order);
