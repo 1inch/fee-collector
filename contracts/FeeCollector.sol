@@ -11,6 +11,8 @@ import "./helpers/ImmutableOwner.sol";
 import "./libraries/ArgumentsDecoder.sol";
 import "./utils/BalanceAccounting.sol";
 import "./libraries/Types.sol";
+import "hardhat/console.sol";
+
 
 
 contract FeeCollector is
@@ -394,7 +396,7 @@ contract FeeCollector is
         return swapMakerAmount * value(erc20) / getTokenBalance(erc20);
     }
 
-    function func_somethingHere(address from, address to, uint256 amount, IERC20 erc20) external onlyImmutableOwner {
+    function transferFrom(address from, address to, uint256 amount, IERC20 erc20) external onlyImmutableOwner {
         require(to == address(this), "FeeCollector: invalid tokens destination");
         erc20.transferFrom(from, to, amount);
     }
@@ -411,8 +413,19 @@ contract FeeCollector is
             "FeeCollector: invalid signature"
         );
 
-        //bytes memory getMakerAmountFunc = order.getTakerAmount.decodeBytes(1);
-        //bytes memory getTakerAmountFunc = order.getTakerAmount.decodeBytes(1);
+//        bytes memory getMakerAmountFunc = order.getMakerAmount.decodeBytes(1);
+//        bytes memory getTakerAmountFunc = order.getTakerAmount.decodeBytes(1);
+//        (address userAsset) = abi.decode(order.interaction, (address));
+//        console.logBytes(getMakerAmountFunc);
+//        console.logBytes(getTakerAmountFunc);
+//        console.logAddress(getMakerAmountFunc.decodeAddress(0));
+//        console.logAddress(userAsset);
+//        require(
+//            getMakerAmountFunc.decodeAddress(0) == userAsset,
+//            //getTakerAmountFunc.decodeAddress(0) == address(this),
+//            "FeeCollector: invalid signature"
+//        );
+
 
         return this.isValidSignature.selector;
     }
