@@ -44,7 +44,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
 
     struct TokenInfo {
         uint40 lastTime;
-        uint216 lastPriceValue;
+        uint216 lastValue;
         mapping(uint256 => EpochBalance) epochBalance;
         uint256 firstUnprocessedEpoch;
         uint256 currentEpoch;
@@ -112,9 +112,9 @@ contract FeeCollector is Ownable, BalanceAccounting {
             _k15, _k16, _k17, _k18, _k19
         ];
         uint256 lastTime = tokenInfo[_token].lastTime;
-        uint256 lastPriceValue = tokenInfo[_token].lastPriceValue;
+        uint256 lastValue = tokenInfo[_token].lastValue;
         uint256 secs = Math.min(time - lastTime, _MAX_TIME);
-        result = Math.max(lastPriceValue, minValue);
+        result = Math.max(lastValue, minValue);
         for (uint i = 0; secs > 0 && i < table.length; i++) {
             if (secs & 1 != 0) {
                 result = result * table[i] / 1e36;
@@ -126,7 +126,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
 
     function valueForTime(uint256 time, IERC20 _token) public view returns(uint256 result) {
         uint256 secs = tokenInfo[_token].lastTime;
-        result = tokenInfo[_token].lastPriceValue;
+        result = tokenInfo[_token].lastValue;
 
         secs = time - secs;
         if (secs > _MAX_TIME) {
@@ -360,7 +360,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
         uint256 feeWithAmount = (amount >= 0 ? fee + uint256(amount) : fee - uint256(-amount));
         (
             tokenInfo[erc20].lastTime,
-            tokenInfo[erc20].lastPriceValue
+            tokenInfo[erc20].lastValue
         ) = (
             uint40(block.timestamp),
             uint216(valueForTime(block.timestamp, erc20) * feeWithAmount / (fee == 0 ? 1 : fee))
@@ -378,8 +378,8 @@ contract FeeCollector is Ownable, BalanceAccounting {
         if (firstUnprocessedEpoch != tokenCurrentEpoch) {
             tokenBalance += (_token.epochBalance[tokenCurrentEpoch].totalSupply - _token.epochBalance[tokenCurrentEpoch].tokenSpent);
         }
-        uint256 _price = value(erc20);
-        uint256 returnAmount = amount * tokenBalance / _price;
+        uint256 _value = value(erc20);
+        uint256 returnAmount = amount * tokenBalance / _value;
         require(tokenBalance >= returnAmount, "not enough tokens");
 
         if (_token.firstUnprocessedEpoch == tokenCurrentEpoch) {
