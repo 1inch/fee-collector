@@ -98,9 +98,28 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
 
         await this.token.mint(wallet2, ether('1000000'));
         await this.token.approve(this.feeCollector.address, ether('1000000'), { from: wallet2 });
-
-        this.buildOrder = (exchange, feeCollector, takerAsset, makerAmount, takerAmount, taker, predicate = '0x', permit = '0x', interaction = web3.eth.abi.encodeParameter('bytes', wallet), realToken = this.weth) =>
-             buildOrderWithSalt(exchange, '1', feeCollector, takerAsset, makerAmount, takerAmount, taker, predicate, permit, interaction, realToken);
+        this.buildOrder = (exchange,
+                           feeCollector,
+                           takerAsset,
+                           makerAmount,
+                           takerAmount,
+                           taker,
+                           predicate = '0x',
+                           permit = '0x',
+                           interaction = this.weth.address.replace("0x", "0x000000000000000000000000"),
+                           realToken = this.weth) =>
+            buildOrderWithSalt(
+                exchange,
+                '1',
+                feeCollector,
+                takerAsset,
+                makerAmount,
+                takerAmount,
+                taker,
+                predicate,
+                permit,
+                interaction,
+                realToken);
     });
 
     // describe('Gas measurements', async function () {
@@ -148,7 +167,7 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
     describe('LimitOrderProtocol', async function () {
         it('isValidSignature', async function () {
             const order = this.buildOrder(this.swap, this.feeCollector, this.token, 1, 1, this.feeCollector.address);
-            console.log(this.weth.address)
+            console.log(order.interaction);
             const data = buildOrderData(this.chainId, this.swap.address, order);
             const orderHash = bufferToHex(ethSigUtil.TypedDataUtils.sign(data));
             const signature = web3.eth.abi.encodeParameter(ABIOrder, order);

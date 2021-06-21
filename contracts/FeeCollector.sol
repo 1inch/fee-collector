@@ -416,9 +416,9 @@ contract FeeCollector is
         bytes memory getMakerAmountFunc = order.getMakerAmount.decodeBytes(1);
         bytes memory getTakerAmountFunc = order.getTakerAmount.decodeBytes(1);
         (address userAsset) = abi.decode(order.interaction, (address));
-        console.logAddress(address(this));
-        console.logAddress(order.getMakerAmount.decodeAddress(0));
-        console.logAddress(getMakerAmountFunc.decodeAddress(0));
+        console.logBytes(order.interaction);
+//        console.logAddress(userAsset);
+//        console.logAddress(getMakerAmountFunc.decodeAddress(0));
         require(
             getMakerAmountFunc.decodeAddress(0) == userAsset,
             //getTakerAmountFunc.decodeAddress(0) == address(this),
