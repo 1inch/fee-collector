@@ -1,4 +1,4 @@
-const { BN, ether } = require('@openzeppelin/test-helpers');
+const { BN, ether, constants, time } = require('@openzeppelin/test-helpers');
 const { expect } = require('chai');
 const { bufferToHex } = require('ethereumjs-util');
 const ethSigUtil = require('eth-sig-util');
@@ -70,7 +70,7 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
             salt: salt,
             makerAsset: feeCollector.address,
             takerAsset: takerAsset.address,
-            makerAssetData: feeCollector.contract.methods.transferFrom(wallet, taker, makerAmount, feeCollector.address).encodeABI(),
+            makerAssetData: feeCollector.contract.methods.transferFrom(wallet, taker, makerAmount, realToken.address).encodeABI(),
             takerAssetData: takerAsset.contract.methods.transferFrom(taker, wallet, takerAmount).encodeABI(),
             getMakerAmount: exchange.contract.methods.arbitraryStaticCall(feeCollector.address, cutLastArg(feeCollector.contract.methods.getMakerAmount(realToken.address, 0).encodeABI())).encodeABI(),
             getTakerAmount: exchange.contract.methods.arbitraryStaticCall(feeCollector.address, cutLastArg(feeCollector.contract.methods.getTakerAmount(realToken.address, 0).encodeABI())).encodeABI(),
@@ -106,7 +106,7 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
                            taker,
                            predicate = '0x',
                            permit = '0x',
-                           interaction = this.weth.address.replace("0x", "0x000000000000000000000000"),
+                           interaction = this.weth.address,
                            realToken = this.weth) =>
             buildOrderWithSalt(
                 exchange,
@@ -142,27 +142,40 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
     //     });
     // });
     //
-    // describe('Init', async function () {
-    //     it('decelerationTable', async function () {
-    //         const table = await this.feeCollector.decelerationTable.call();
-    //
-    //         let z = toBN(deceleration);
-    //         for (let i = 0; i < table.length; i++) {
-    //             expect(table[i].toString()).equal(z.toString());
-    //             z = z.mul(z).div(bn1e36);
-    //         }
-    //     });
-    //
-    //     it('started price', async function () {
-    //         const cost = await this.feeCollector.valueForTime.call(toBN(0), this.weth.address);
-    //         expect(cost.toString()).equal(minValue);
-    //     });
-    //
-    //     it('name', async function () {
-    //         const result = await this.feeCollector.name.call();
-    //         expect(result).equal(name);
-    //     });
-    // });
+    describe('Init', async function () {
+        // it('decelerationTable', async function () {
+        //     const table = await this.feeCollector.decelerationTable.call();
+        //
+        //     let z = toBN(deceleration);
+        //     for (let i = 0; i < table.length; i++) {
+        //         expect(table[i].toString()).equal(z.toString());
+        //         z = z.mul(z).div(bn1e36);
+        //     }
+        // });
+        //
+        // it('started price', async function () {
+        //     const cost = await this.feeCollector.valueForTime.call(toBN(0), this.weth.address);
+        //     expect(cost.toString()).equal(minValue);
+        // });
+        //
+        // it('name', async function () {
+        //     const result = await this.feeCollector.name.call();
+        //     expect(result).equal(name);
+        // });
+
+        it('getMakerAmount/getTakerAmount', async function () {
+            const tokensCount = toBN(10000000000);
+            const reward = toBN(800000000000);
+            const threeDaysInSeconds = 3 * 24 * 3600;
+            await this.feeCollector.updateRewardNonLP(this.weth.address, wallet, reward, { from: wallet });
+            await time.increaseTo(await time.latest() + threeDaysInSeconds);
+
+            const makerAmount = await this.feeCollector.getMakerAmount(this.weth.address, tokensCount);
+            const takerAmount = await this.feeCollector.getTakerAmount(this.weth.address, makerAmount);
+            expect(makerAmount).to.be.bignumber.equal((reward.mul(tokensCount).div(toBN(minValue))).toString());
+            expect(takerAmount).to.be.bignumber.equal(tokensCount);
+        });
+    });
 
     describe('LimitOrderProtocol', async function () {
         it('isValidSignature', async function () {

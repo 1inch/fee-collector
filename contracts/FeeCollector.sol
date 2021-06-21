@@ -332,7 +332,7 @@ contract FeeCollector is
     }
 
     function name() external view returns(string memory) {
-        return string(abi.encodePacked("FeeCollector: ", IERC20Metadata(address(token)).name()));
+        return string(abi.encodePacked("FC: ", IERC20Metadata(address(token)).name()));
     }
 
     function symbol() external view returns(string memory) {
@@ -397,7 +397,7 @@ contract FeeCollector is
     }
 
     function transferFrom(address from, address to, uint256 amount, IERC20 erc20) external onlyImmutableOwner {
-        require(to == address(this), "FeeCollector: invalid tokens destination");
+        require(to == address(this), "FC: invalid tokens destination");
         erc20.transferFrom(from, to, amount);
     }
 
@@ -410,23 +410,26 @@ contract FeeCollector is
             order.takerAsset == address(token) &&
             order.makerAssetData.decodeAddress(_TO_INDEX) == address(this) &&
             order.interaction.length > 0,
-            "FeeCollector: invalid signature"
+            "FC: invalid signature first check"
         );
 
         bytes memory getMakerAmountFunc = order.getMakerAmount.decodeBytes(1);
         bytes memory getTakerAmountFunc = order.getTakerAmount.decodeBytes(1);
-        (address userAsset) = abi.decode(order.interaction, (address));
-        console.logBytes(order.interaction);
-//        console.logAddress(userAsset);
-//        console.logAddress(getMakerAmountFunc.decodeAddress(0));
+        address userAsset = decodeAddress(order.interaction);
         require(
-            getMakerAmountFunc.decodeAddress(0) == userAsset,
-            //getTakerAmountFunc.decodeAddress(0) == address(this),
-            "FeeCollector: invalid signature"
+            getMakerAmountFunc.decodeAddress(0) == userAsset &&
+            getTakerAmountFunc.decodeAddress(0) == userAsset &&
+            order.makerAssetData.decodeAddress(3) == userAsset,
+            "FC: invalid signature second check"
         );
 
-
         return this.isValidSignature.selector;
+    }
+
+    function decodeAddress(bytes memory data) private pure returns(address result) {
+        assembly { // solhint-disable-line no-inline-assembly
+            result := and(mload(add(data, 0x14)), 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)
+        }
     }
 
     function notifyFillOrder(IERC20 makerAsset, IERC20 takerAsset, uint256 makingAmount, uint256 takingAmount, bytes calldata interaction) public onlyImmutableOwner {

@@ -21,7 +21,7 @@ library ArgumentsDecoder {
         }
     }
 
-    function decodeBytes(bytes memory data, uint256 argumentIndex) internal view returns(bytes memory result) {
+    function decodeBytes(bytes memory data, uint256 argumentIndex) internal pure returns(bytes memory result) {
         assembly { // solhint-disable-line no-inline-assembly
             let offset := mload(add(add(data, 0x24), mul(argumentIndex, 0x20)))
             result := add(add(data, 0x24), offset)
