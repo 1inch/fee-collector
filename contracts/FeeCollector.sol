@@ -457,7 +457,6 @@ contract FeeCollector is Ownable, BalanceAccounting {
             uint256 totalSupply = epochBalance.totalSupply;
             epochBalance.balances[msg.sender] = 0;
             epochBalance.totalSupply = totalSupply - share;
-            epochBalance.tokenSpent -= _transferTokenShare(erc20, epochBalance.tokenSpent, share, totalSupply);
             epochBalance.inchBalance -= _transferTokenShare(token, epochBalance.inchBalance, share, totalSupply);
         }
     }
