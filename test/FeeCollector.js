@@ -50,6 +50,7 @@ async function getTokenBalance (feeCollector, token) {
 
 contract('FeeCollector', async function ([_, wallet, wallet2]) {
     const name = 'FeeCollector: INCH';
+    const symbol = 'fee-INCH';
 
     const minValue = '100000000000000000000';
     const deceleration = '999900000000000000000000000000000000';
@@ -114,6 +115,11 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
         it('name', async function () {
             const result = await this.feeCollector.name.call();
             expect(result).equal(name);
+        });
+
+        it('symbol', async function () {
+            const result = await this.feeCollector.symbol.call();
+            expect(result).equal(symbol);
         });
     });
 
@@ -858,7 +864,6 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
             const firstUnprocessedEpoch = tokenInfo.firstUnprocessedEpoch;
 
             tokenInfo = await getTokenInfo(this.feeCollector, this.weth.address, wallet2, firstUnprocessedEpoch);
-            const tokenInfoTokenBalance = tokenInfo.epochBalance.tokenSpent;
             const tokenInfoInchBalance = tokenInfo.epochBalance.inchBalance;
 
             await this.feeCollector.claimFrozenEpoch(this.weth.address, { from: wallet2 });
