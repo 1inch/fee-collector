@@ -332,7 +332,7 @@ contract FeeCollector is
     }
 
     function name() external view returns(string memory) {
-        return string(abi.encodePacked("FC: ", IERC20Metadata(address(token)).name()));
+        return string(abi.encodePacked("FeeCollector: ", IERC20Metadata(address(token)).name()));
     }
 
     function symbol() external view returns(string memory) {
@@ -435,7 +435,7 @@ contract FeeCollector is
     function notifyFillOrder(IERC20 makerAsset, IERC20 takerAsset, uint256 makingAmount, uint256 takingAmount, bytes calldata interaction) public onlyImmutableOwner {
         require(address(makerAsset) == address(this), "Invalid maker asset");
         require(takerAsset == token, "Invalid taker asset");
-        (address userAsset) = abi.decode(interaction, (address));
+        address userAsset = decodeAddress(interaction);
         exchangeBalances(IERC20(userAsset), makingAmount, takingAmount);
     }
 
