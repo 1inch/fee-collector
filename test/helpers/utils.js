@@ -20,5 +20,5 @@ module.exports = {
     price,
     toBN,
     cutLastArg,
-    cutLastArgUnaligned
+    cutLastArgUnaligned,
 };
