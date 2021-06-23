@@ -473,7 +473,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
     function _transferTokenShare(IERC20 _token, uint256 balance, uint256 share, uint256 totalSupply) private returns(uint256 amount) {
         amount = balance * share / totalSupply;
         if (amount > 0) {
-            _token.safeTransfer(payable(msg.sender), amount);
+            _token.safeTransfer(msg.sender, amount);
         }
     }
 
