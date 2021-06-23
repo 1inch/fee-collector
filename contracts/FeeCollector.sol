@@ -12,7 +12,22 @@ import "./utils/BalanceAccounting.sol";
 contract FeeCollector is Ownable, BalanceAccounting {
     using SafeERC20 for IERC20;
 
-    IERC20 public immutable token;
+    struct EpochBalance {
+        mapping(address => uint256) balances;
+        uint256 totalSupply;
+        uint256 tokenSpent;
+        uint256 inchBalance;
+    }
+
+    struct TokenInfo {
+        uint40 lastTime;
+        uint216 lastValue;
+        mapping(uint256 => EpochBalance) epochBalance;
+        uint256 firstUnprocessedEpoch;
+        uint256 currentEpoch;
+        mapping(address => uint256) firstUserUnprocessedEpoch;
+    }
+
     uint256 private immutable _k00;
     uint256 private immutable _k01;
     uint256 private immutable _k02;
@@ -33,26 +48,11 @@ contract FeeCollector is Ownable, BalanceAccounting {
     uint256 private immutable _k17;
     uint256 private immutable _k18;
     uint256 private immutable _k19;
+
     uint256 private constant _MAX_TIME = 0xfffff;
 
-    struct EpochBalance {
-        mapping(address => uint256) balances;
-        uint256 totalSupply;
-        uint256 tokenSpent;
-        uint256 inchBalance;
-    }
-
-    struct TokenInfo {
-        uint40 lastTime;
-        uint216 lastValue;
-        mapping(uint256 => EpochBalance) epochBalance;
-        uint256 firstUnprocessedEpoch;
-        uint256 currentEpoch;
-        mapping(address => uint256) firstUserUnprocessedEpoch;
-    }
-
     mapping(IERC20 => TokenInfo) public tokenInfo;
-
+    IERC20 public immutable token;
     uint256 public immutable minValue;
     uint8 public immutable decimals;
 
@@ -64,8 +64,8 @@ contract FeeCollector is Ownable, BalanceAccounting {
         require(_deceleration > 0 && _deceleration < 1e36, "Invalid deceleration");
 
         token = _token;
-        decimals = IERC20Metadata(address(_token)).decimals();
         minValue = _minValue;
+        decimals = IERC20Metadata(address(_token)).decimals();
 
         uint256 z;
         _k00 = z = _deceleration;
@@ -91,6 +91,34 @@ contract FeeCollector is Ownable, BalanceAccounting {
         require(z * z < 1e36, "Deceleration is too slow");
     }
 
+    function name() external view returns(string memory) {
+        return string(abi.encodePacked("FeeCollector: ", IERC20Metadata(address(token)).name()));
+    }
+
+    function symbol() external view returns(string memory) {
+        return string(abi.encodePacked("fee-", IERC20Metadata(address(token)).symbol()));
+    }
+
+    function getUserEpochBalance(address user, IERC20 _token, uint256 epoch) external view returns(uint256) {
+        return tokenInfo[_token].epochBalance[epoch].balances[user];
+    }
+
+    function getTotalSupplyEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256) {
+        return tokenInfo[_token].epochBalance[epoch].totalSupply;
+    }
+
+    function getTokenSpentEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256) {
+        return tokenInfo[_token].epochBalance[epoch].tokenSpent;
+    }
+
+    function getInchBalanceEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256) {
+        return tokenInfo[_token].epochBalance[epoch].inchBalance;
+    }
+
+    function getFirstUserUnprocessedEpoch(address user, IERC20 _token) external view returns(uint256) {
+        return tokenInfo[_token].firstUserUnprocessedEpoch[user];
+    }
+
     function decelerationTable() public view returns(uint256[20] memory) {
         return [
             _k00, _k01, _k02, _k03, _k04,
@@ -105,12 +133,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
     }
 
     function valueForTimeSimple(uint256 time, IERC20 _token) public view returns(uint256 result) {
-        uint256[20] memory table = [
-            _k00, _k01, _k02, _k03, _k04,
-            _k05, _k06, _k07, _k08, _k09,
-            _k10, _k11, _k12, _k13, _k14,
-            _k15, _k16, _k17, _k18, _k19
-        ];
+        uint256[20] memory table = decelerationTable();
         uint256 lastTime = tokenInfo[_token].lastTime;
         uint256 lastValue = tokenInfo[_token].lastValue;
         uint256 secs = Math.min(time - lastTime, _MAX_TIME);
@@ -310,14 +333,6 @@ contract FeeCollector is Ownable, BalanceAccounting {
         }
     }
 
-    function name() external view returns(string memory) {
-        return string(abi.encodePacked("FeeCollector: ", IERC20Metadata(address(token)).name()));
-    }
-
-    function symbol() external view returns(string memory) {
-        return string(abi.encodePacked("fee-", IERC20Metadata(address(token)).symbol()));
-    }
-
     function updateRewards(address[] calldata receivers, uint256[] calldata amounts) external {
         for (uint i = 0; i < receivers.length; i++) {
             _updateReward(IERC20(msg.sender), receivers[i], amounts[i]);
@@ -331,40 +346,6 @@ contract FeeCollector is Ownable, BalanceAccounting {
     function updateRewardNonLP(IERC20 erc20, address referral, uint256 amount) external {
         erc20.safeTransferFrom(msg.sender, address(this), amount);
         _updateReward(erc20, referral, amount);
-    }
-
-    function _updateReward(IERC20 erc20, address referral, uint256 amount) private {
-        TokenInfo storage _token = tokenInfo[erc20];
-        uint256 currentEpoch = _token.currentEpoch;
-
-        _updateTokenState(erc20, int256(amount));
-
-        // Add new reward to current epoch
-        _token.epochBalance[currentEpoch].balances[referral] += amount;
-        _token.epochBalance[currentEpoch].totalSupply += amount;
-
-        // Collect all processed epochs and advance user token epoch
-        _collectProcessedEpochs(referral, _token, currentEpoch);
-    }
-
-    function _updateTokenState(IERC20 erc20, int256 amount) private {
-        TokenInfo storage _token = tokenInfo[erc20];
-        uint256 currentEpoch = _token.currentEpoch;
-        uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
-
-        uint256 fee = _token.epochBalance[firstUnprocessedEpoch].totalSupply - _token.epochBalance[firstUnprocessedEpoch].tokenSpent;
-        if (firstUnprocessedEpoch != currentEpoch) {
-            fee += (_token.epochBalance[currentEpoch].totalSupply - _token.epochBalance[currentEpoch].tokenSpent);
-        }
-
-        uint256 feeWithAmount = (amount >= 0 ? fee + uint256(amount) : fee - uint256(-amount));
-        (
-            tokenInfo[erc20].lastTime,
-            tokenInfo[erc20].lastValue
-        ) = (
-            uint40(block.timestamp),
-            uint216(valueForTime(block.timestamp, erc20) * feeWithAmount / (fee == 0 ? 1 : fee))
-        );
     }
 
     function trade(IERC20 erc20, uint256 amount) external {
@@ -461,6 +442,41 @@ contract FeeCollector is Ownable, BalanceAccounting {
         }
     }
 
+
+    function _updateReward(IERC20 erc20, address referral, uint256 amount) private {
+        TokenInfo storage _token = tokenInfo[erc20];
+        uint256 currentEpoch = _token.currentEpoch;
+
+        _updateTokenState(erc20, int256(amount));
+
+        // Add new reward to current epoch
+        _token.epochBalance[currentEpoch].balances[referral] += amount;
+        _token.epochBalance[currentEpoch].totalSupply += amount;
+
+        // Collect all processed epochs and advance user token epoch
+        _collectProcessedEpochs(referral, _token, currentEpoch);
+    }
+
+    function _updateTokenState(IERC20 erc20, int256 amount) private {
+        TokenInfo storage _token = tokenInfo[erc20];
+        uint256 currentEpoch = _token.currentEpoch;
+        uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
+
+        uint256 fee = _token.epochBalance[firstUnprocessedEpoch].totalSupply - _token.epochBalance[firstUnprocessedEpoch].tokenSpent;
+        if (firstUnprocessedEpoch != currentEpoch) {
+            fee += (_token.epochBalance[currentEpoch].totalSupply - _token.epochBalance[currentEpoch].tokenSpent);
+        }
+
+        uint256 feeWithAmount = (amount >= 0 ? fee + uint256(amount) : fee - uint256(-amount));
+        (
+            tokenInfo[erc20].lastTime,
+            tokenInfo[erc20].lastValue
+        ) = (
+            uint40(block.timestamp),
+            uint216(valueForTime(block.timestamp, erc20) * feeWithAmount / (fee == 0 ? 1 : fee))
+        );
+    }
+
     function _transferTokenShare(IERC20 _token, uint256 balance, uint256 share, uint256 totalSupply) private returns(uint256 amount) {
         amount = balance * share / totalSupply;
         if (amount > 0) {
@@ -507,25 +523,5 @@ contract FeeCollector is Ownable, BalanceAccounting {
             _token.epochBalance[epoch].totalSupply = totalSupply - share;
             _token.epochBalance[epoch].inchBalance = inchBalance - collected;
         }
-    }
-
-    function getUserEpochBalance(address user, IERC20 _token, uint256 epoch) external view returns(uint256) {
-        return tokenInfo[_token].epochBalance[epoch].balances[user];
-    }
-
-    function getTotalSupplyEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256) {
-        return tokenInfo[_token].epochBalance[epoch].totalSupply;
-    }
-
-    function getTokenSpentEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256) {
-        return tokenInfo[_token].epochBalance[epoch].tokenSpent;
-    }
-
-    function getInchBalanceEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256) {
-        return tokenInfo[_token].epochBalance[epoch].inchBalance;
-    }
-
-    function getFirstUserUnprocessedEpoch(address user, IERC20 _token) external view returns(uint256) {
-        return tokenInfo[_token].firstUserUnprocessedEpoch[user];
     }
 }
