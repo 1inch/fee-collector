@@ -343,44 +343,51 @@ contract FeeCollector is Ownable, BalanceAccounting {
 
     function trade(IERC20 erc20, uint256 amount) external {
         TokenInfo storage _token = tokenInfo[erc20];
-        uint256 tokenCurrentEpoch = _token.currentEpoch;
+        uint256 currentEpoch = _token.currentEpoch;
         uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
         EpochBalance storage epochBalance = _token.epochBalance[firstUnprocessedEpoch];
-        EpochBalance storage currentEpochBalance = _token.epochBalance[tokenCurrentEpoch];
+        EpochBalance storage currentEpochBalance = _token.epochBalance[currentEpoch];
 
-        uint256 tokenBalance = _token.epochBalance[firstUnprocessedEpoch].totalSupply - _token.epochBalance[firstUnprocessedEpoch].tokenSpent;
-        if (firstUnprocessedEpoch != tokenCurrentEpoch) {
-            tokenBalance += (_token.epochBalance[tokenCurrentEpoch].totalSupply - _token.epochBalance[tokenCurrentEpoch].tokenSpent);
+        uint256 currentEpochStored = currentEpoch;
+
+        uint256 unprocessedTotalSupply = epochBalance.totalSupply;
+        uint256 unprocessedTokenBalance = unprocessedTotalSupply - epochBalance.tokenSpent;
+        uint256 tokenBalance = unprocessedTokenBalance;
+        if (firstUnprocessedEpoch != currentEpoch) {
+            tokenBalance += currentEpochBalance.totalSupply - currentEpochBalance.tokenSpent;
         }
-        uint256 _value = value(erc20);
-        uint256 returnAmount = amount * tokenBalance / _value;
+
+        uint256 returnAmount = amount * tokenBalance / value(erc20);
         require(tokenBalance >= returnAmount, "not enough tokens");
 
-        if (_token.firstUnprocessedEpoch == tokenCurrentEpoch) {
-            tokenCurrentEpoch += 1;
-            _token.currentEpoch = tokenCurrentEpoch;
+        if (firstUnprocessedEpoch == currentEpoch) {
+            currentEpoch += 1;
         }
 
-        _updateTokenState(erc20, -int256(returnAmount));
+        _updateTokenState(erc20, -int256(returnAmount), currentEpochStored, firstUnprocessedEpoch);
 
-        if (returnAmount <= epochBalance.totalSupply - epochBalance.tokenSpent) {
-            if (returnAmount == epochBalance.totalSupply - epochBalance.tokenSpent) {
+        if (returnAmount <= unprocessedTokenBalance) {
+            if (returnAmount == unprocessedTokenBalance) {
                 _token.firstUnprocessedEpoch += 1;
             }
 
             epochBalance.tokenSpent += returnAmount;
             epochBalance.inchBalance += amount;
         } else {
-            uint256 amountPart = (epochBalance.totalSupply - epochBalance.tokenSpent) * amount / returnAmount;
+            uint256 amountPart = unprocessedTokenBalance * amount / returnAmount;
 
-            currentEpochBalance.tokenSpent += (returnAmount - (epochBalance.totalSupply - epochBalance.tokenSpent));
-            currentEpochBalance.inchBalance += (amount - amountPart);
-
-            epochBalance.tokenSpent = epochBalance.totalSupply;
+            epochBalance.tokenSpent = unprocessedTotalSupply;
             epochBalance.inchBalance += amountPart;
 
+            currentEpochBalance.tokenSpent += returnAmount - unprocessedTokenBalance;
+            currentEpochBalance.inchBalance += amount - amountPart;
+
             _token.firstUnprocessedEpoch += 1;
-            _token.currentEpoch = tokenCurrentEpoch + 1;
+            currentEpoch += 1;
+        }
+
+        if (currentEpoch != currentEpochStored) {
+            _token.currentEpoch = currentEpoch;
         }
 
         token.safeTransferFrom(msg.sender, address(this), amount);
@@ -390,7 +397,7 @@ contract FeeCollector is Ownable, BalanceAccounting {
     function claim(IERC20[] memory pools) external {
         for (uint256 i = 0; i < pools.length; ++i) {
             TokenInfo storage _token = tokenInfo[pools[i]];
-            _collectProcessedEpochs(msg.sender, _token, _token.currentEpoch);
+            _collectProcessedEpochs(msg.sender, _token, _token.currentEpoch, _token.firstUnprocessedEpoch);
         }
 
         uint256 userBalance = balanceOf(msg.sender);
@@ -435,25 +442,23 @@ contract FeeCollector is Ownable, BalanceAccounting {
         }
     }
 
-
     function _updateReward(IERC20 erc20, address referral, uint256 amount) private {
         TokenInfo storage _token = tokenInfo[erc20];
         uint256 currentEpoch = _token.currentEpoch;
+        uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
 
-        _updateTokenState(erc20, int256(amount));
+        _updateTokenState(erc20, int256(amount), currentEpoch, firstUnprocessedEpoch);
 
         // Add new reward to current epoch
         _token.epochBalance[currentEpoch].balances[referral] += amount;
         _token.epochBalance[currentEpoch].totalSupply += amount;
 
         // Collect all processed epochs and advance user token epoch
-        _collectProcessedEpochs(referral, _token, currentEpoch);
+        _collectProcessedEpochs(referral, _token, currentEpoch, firstUnprocessedEpoch);
     }
 
-    function _updateTokenState(IERC20 erc20, int256 amount) private {
+    function _updateTokenState(IERC20 erc20, int256 amount, uint256 currentEpoch, uint256 firstUnprocessedEpoch) private {
         TokenInfo storage _token = tokenInfo[erc20];
-        uint256 currentEpoch = _token.currentEpoch;
-        uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
 
         uint256 fee = _token.epochBalance[firstUnprocessedEpoch].totalSupply - _token.epochBalance[firstUnprocessedEpoch].tokenSpent;
         if (firstUnprocessedEpoch != currentEpoch) {
@@ -477,8 +482,12 @@ contract FeeCollector is Ownable, BalanceAccounting {
         }
     }
 
-    function _collectProcessedEpochs(address user, TokenInfo storage _token, uint256 currentEpoch) private {
+    function _collectProcessedEpochs(address user, TokenInfo storage _token, uint256 currentEpoch, uint256 tokenEpoch) private {
         uint256 userEpoch = _token.firstUserUnprocessedEpoch[user];
+
+        if (tokenEpoch <= userEpoch) {
+            return;
+        }
 
         // Early return for the new users
         if (_token.epochBalance[userEpoch].balances[user] == 0) {
@@ -486,10 +495,6 @@ contract FeeCollector is Ownable, BalanceAccounting {
             return;
         }
 
-        uint256 tokenEpoch = _token.firstUnprocessedEpoch;
-        if (tokenEpoch <= userEpoch) {
-            return;
-        }
         uint256 epochCount = Math.min(2, tokenEpoch - userEpoch); // 0, 1 or 2 epochs
 
         // Claim 1 or 2 processed epochs for the user
