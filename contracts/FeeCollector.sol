@@ -12,6 +12,8 @@ import "./libraries/ArgumentsDecoder.sol";
 import "./utils/BalanceAccounting.sol";
 import "./libraries/Types.sol";
 
+import "hardhat/console.sol";
+
 contract FeeCollector is
     BalanceAccounting,
     IERC1271,
@@ -367,19 +369,17 @@ contract FeeCollector is
         return swapMakerAmount * value(erc20) / getTokenBalance(erc20);
     }
 
-    function transferFrom(address from, address to, uint256 amount, IERC20 erc20) external onlyImmutableOwner {
-        require(to == address(this), "FC: invalid tokens destination");
-        erc20.transferFrom(from, to, amount);
+    function func_00j71qF(address /**/, address to, uint256 amount, IERC20 erc20) external onlyImmutableOwner {
+        erc20.transfer(to, amount);
     }
 
     function isValidSignature(bytes32 hash, bytes memory signature) public view override returns(bytes4) {
         Types.Order memory order = abi.decode(signature, (Types.Order));
-
         require(
             _hash(order) == hash &&
             order.makerAsset == address(this) &&
             order.takerAsset == address(token) &&
-            order.makerAssetData.decodeAddress(_TO_INDEX) == address(this) &&
+            order.takerAssetData.decodeAddress(_TO_INDEX) == address(this) &&
             order.interaction.length > 0,
             "FC: invalid signature first check"
         );
@@ -407,7 +407,7 @@ contract FeeCollector is
         require(address(makerAsset) == address(this), "Invalid maker asset");
         require(takerAsset == token, "Invalid taker asset");
         address userAsset = decodeAddress(interaction);
-        exchangeBalances(IERC20(userAsset), makingAmount, takingAmount);
+        exchangeBalances(IERC20(userAsset), takingAmount, makingAmount);
     }
 
     function trade(IERC20 erc20, uint256 amount) external {
@@ -432,6 +432,8 @@ contract FeeCollector is
         uint256 unprocessedTotalSupply = epochBalance.totalSupply;
         uint256 unprocessedTokenBalance = unprocessedTotalSupply - epochBalance.tokenSpent;
         uint256 tokenBalance = getTokenBalanceRaw(_token, currentEpoch, firstUnprocessedEpoch);
+        console.logUint(tokenBalance);
+        console.logUint(returnAmount);
         require(tokenBalance >= returnAmount, "not enough tokens");
 
         if (firstUnprocessedEpoch == currentEpoch) {
@@ -528,6 +530,7 @@ contract FeeCollector is
     }
 
     function _updateReward(IERC20 erc20, address referral, uint256 amount) private {
+
         TokenInfo storage _token = tokenInfo[erc20];
         uint256 currentEpoch = _token.currentEpoch;
         uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
@@ -537,7 +540,6 @@ contract FeeCollector is
         // Add new reward to current epoch
         _token.epochBalance[currentEpoch].balances[referral] += amount;
         _token.epochBalance[currentEpoch].totalSupply += amount;
-
         // Collect all processed epochs and advance user token epoch
         _collectProcessedEpochs(referral, _token, currentEpoch, firstUnprocessedEpoch);
     }

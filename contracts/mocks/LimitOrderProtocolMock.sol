@@ -13,7 +13,9 @@ import "../libraries/Types.sol";
 import "../libraries/ArgumentsDecoder.sol";
 import "../libraries/UncheckedAddress.sol";
 
-contract LimitOrderProtocolMock is EIP712Alien
+import "hardhat/console.sol";
+
+contract LimitOrderProtocolMock is EIP712("1inch Limit Order Protocol", "1")
 {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
@@ -26,23 +28,13 @@ contract LimitOrderProtocolMock is EIP712Alien
     mapping(bytes32 => uint256) private _remaining;
     bytes4 immutable private _MAX_SELECTOR = bytes4(uint32(IERC20.transferFrom.selector) + 10);
 
-    constructor() EIP712Alien(address(this), "1inch Limit Order Protocol", "1") {
-    }
-
-    bytes32 constant public LIMIT_ORDER_TYPEHASH = keccak256(
+    bytes32 constant public _LIMIT_ORDER_TYPEHASH = keccak256(
         "Order(uint256 salt,address makerAsset,address takerAsset,bytes makerAssetData,bytes takerAssetData,bytes getMakerAmount,bytes getTakerAmount,bytes predicate,bytes permit,bytes interaction)"
     );
 
-    function getMakerAmount(uint256 orderMakerAmount, uint256 orderTakerAmount, uint256 swapTakerAmount) external pure returns(uint256) {
-        revert("Mock");
-    }
-
-    function getTakerAmount(uint256 orderMakerAmount, uint256 orderTakerAmount, uint256 swapMakerAmount) external pure returns(uint256) {
-        revert("Mock");
-    }
-
     function arbitraryStaticCall(address target, bytes memory data) external view returns(uint256) {
-        revert("Mock");
+        (bytes memory result) = target.uncheckedFunctionStaticCall(data, "AC: arbitraryStaticCall");
+        return abi.decode(result, (uint256));
     }
 
     function fillOrder(
@@ -100,22 +92,26 @@ contract LimitOrderProtocolMock is EIP712Alien
             }
 
             require(makingAmount > 0 && takingAmount > 0, "LOP: can't swap 0 amount");
-
             // Update remaining amount in storage
             remainingMakerAmount = remainingMakerAmount.sub(makingAmount, "LOP: taking > remaining");
             _remaining[orderHash] = remainingMakerAmount + 1;
         }
 
         // Taker => Maker
+        console.logString("Taker => Maker");
+        console.logUint(takingAmount);
         _callTakerAssetTransferFrom(order.takerAsset, order.takerAssetData, takingAmount);
 
         // Maker can handle funds interactively
+        console.logString("interaction");
         if (order.interaction.length > 0) {
             InteractiveMaker(order.makerAssetData.decodeAddress(_FROM_INDEX))
             .notifyFillOrder(order.makerAsset, order.takerAsset, makingAmount, takingAmount, order.interaction);
         }
 
         // Maker => Taker
+        console.logString("Maker => Taker");
+        console.logUint(makingAmount);
         _callMakerAssetTransferFrom(order.makerAsset, order.makerAssetData, target, makingAmount);
 
         return (makingAmount, takingAmount);
@@ -201,11 +197,11 @@ contract LimitOrderProtocolMock is EIP712Alien
         }
     }
 
-    function _hash(Types.Order memory order) private view returns(bytes32) {
+    function _hash(Types.Order memory order) internal view returns(bytes32) {
         return _hashTypedDataV4(
             keccak256(
                 abi.encode(
-                    LIMIT_ORDER_TYPEHASH,
+                    _LIMIT_ORDER_TYPEHASH,
                     order.salt,
                     order.makerAsset,
                     order.takerAsset,
