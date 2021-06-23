@@ -13,8 +13,6 @@ import "../libraries/Types.sol";
 import "../libraries/ArgumentsDecoder.sol";
 import "../libraries/UncheckedAddress.sol";
 
-import "hardhat/console.sol";
-
 contract LimitOrderProtocolMock is EIP712("1inch Limit Order Protocol", "1")
 {
     using SafeMath for uint256;
@@ -98,20 +96,15 @@ contract LimitOrderProtocolMock is EIP712("1inch Limit Order Protocol", "1")
         }
 
         // Taker => Maker
-        console.logString("Taker => Maker");
-        console.logUint(takingAmount);
         _callTakerAssetTransferFrom(order.takerAsset, order.takerAssetData, takingAmount);
 
         // Maker can handle funds interactively
-        console.logString("interaction");
         if (order.interaction.length > 0) {
             InteractiveMaker(order.makerAssetData.decodeAddress(_FROM_INDEX))
             .notifyFillOrder(order.makerAsset, order.takerAsset, makingAmount, takingAmount, order.interaction);
         }
 
         // Maker => Taker
-        console.logString("Maker => Taker");
-        console.logUint(makingAmount);
         _callMakerAssetTransferFrom(order.makerAsset, order.makerAssetData, target, makingAmount);
 
         return (makingAmount, takingAmount);

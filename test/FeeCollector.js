@@ -4,7 +4,7 @@ const {bufferToHex} = require('ethereumjs-util');
 const ethSigUtil = require('eth-sig-util');
 const Wallet = require('ethereumjs-wallet').default;
 const {ABIOrder, buildOrderData} = require('./helpers/orderUtils');
-const {cutLastArg} = require('./helpers/utils');
+const {cutLastArgUnaligned} = require('./helpers/utils');
 const {profileEVM} = require('./helpers/profileEVM');
 const TokenMock = artifacts.require('TokenMock');
 const LimitOrderProtocolMock = artifacts.require('LimitOrderProtocolMock');
@@ -71,8 +71,10 @@ contract('FeeCollector', async function ([currentUserAddress, wallet, wallet2]) 
             takerAsset: takerAsset.address,
             makerAssetData: feeCollector.contract.methods.func_00j71qF(feeCollector.address, taker, makerAmount, realToken.address).encodeABI(),
             takerAssetData: takerAsset.contract.methods.transferFrom(taker, feeCollector.address, takerAmount).encodeABI(),
-            getMakerAmount: cutLastArg(exchange.contract.methods.arbitraryStaticCall(feeCollector.address, feeCollector.contract.methods.getMakerAmount(realToken.address, 0).encodeABI()).encodeABI()),
-            getTakerAmount: cutLastArg(exchange.contract.methods.arbitraryStaticCall(feeCollector.address, feeCollector.contract.methods.getTakerAmount(realToken.address, 0).encodeABI()).encodeABI()),
+            getMakerAmount: cutLastArgUnaligned(feeCollector.contract.methods.getMakerAmount(realToken.address, 0).encodeABI(),
+                (x) => exchange.contract.methods.arbitraryStaticCall(feeCollector.address, x).encodeABI()),
+            getTakerAmount: cutLastArgUnaligned(feeCollector.contract.methods.getTakerAmount(realToken.address, 0).encodeABI(),
+                (x) => exchange.contract.methods.arbitraryStaticCall(feeCollector.address, x).encodeABI()),
             predicate: predicate,
             permit: permit,
             interaction: interaction,
@@ -212,7 +214,7 @@ contract('FeeCollector', async function ([currentUserAddress, wallet, wallet2]) 
             // act
             const wethSpentBeforeNotifyFill = (await fc.getTokenSpentEpochBalance(this.weth.address, 0));
             const inchBalanceBeforeNotifyFill = (await fc.getInchBalanceEpochBalance(this.weth.address, 0));
-            await fc.notifyFillOrder(fc.address, this.token.address, inchesCount, wethCount, this.weth.address);
+            await fc.notifyFillOrder(fc.address, this.token.address, wethCount, inchesCount, this.weth.address);
             const wethSpentAfterNotifyFill = (await fc.getTokenSpentEpochBalance(this.weth.address, 0));
             const inchBalanceAfterNotifyFill = (await fc.getInchBalanceEpochBalance(this.weth.address, 0));
 
@@ -221,7 +223,7 @@ contract('FeeCollector', async function ([currentUserAddress, wallet, wallet2]) 
             expect(inchBalanceAfterNotifyFill).to.be.bignumber.equal(inchBalanceBeforeNotifyFill.add(inchesCount));
         });
 
-        it.only('integrational', async function () {
+        it('integrational', async function () {
             // setup
             const reward = toBN(100);
             await this.weth.mint(currentUserAddress, ether('10000000000000000000000000000'));
@@ -237,23 +239,26 @@ contract('FeeCollector', async function ([currentUserAddress, wallet, wallet2]) 
             const wethCount = toBN('5');
 
             let order = this.buildOrder(this.swap, this.feeCollector, this.token, toBN('1').shln(155), toBN('1').shln(155), currentUserAddress);
-            order.getMakerAmount = "0xbf15fcd8000000000000000000000000cf7ed3acca5a467e9e704c703e8d87f634fb0fc9000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000446761de990000000000000000000000005fbdb2315678afecb367f032d93f642f64180aa3"
-            order.getTakerAmount = "0xbf15fcd8000000000000000000000000cf7ed3acca5a467e9e704c703e8d87f634fb0fc900000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000044eb8fb4690000000000000000000000005fbdb2315678afecb367f032d93f642f64180aa3"
             const data = buildOrderData(this.chainId, this.swap.address, order);
             const orderHash = bufferToHex(ethSigUtil.TypedDataUtils.sign(data));
             const signature = web3.eth.abi.encodeParameter(ABIOrder, order);
 
-            console.log(JSON.stringify(order));
-
             // act
-            const wethSpentBeforeNotifyFill = (await this.feeCollector.getTokenSpentEpochBalance(this.weth.address, 0));
-            const inchBalanceBeforeNotifyFill = (await this.feeCollector.getInchBalanceEpochBalance(this.weth.address, 0));
+            const userBalanceBefore = await this.weth.balanceOf(currentUserAddress);
+            const fcBalanceBefore = await this.weth.balanceOf(this.feeCollector.address);
+            const userTokenBalanceBefore = await this.token.balanceOf(currentUserAddress);
+            const fcTokenBalanceBefore = await this.token.balanceOf(this.feeCollector.address);
             await this.swap.fillOrder(order, signature, wethCount, 0, toBN('10000000000000000000000000000000000'));
-            const wethSpentAfterNotifyFill = (await this.feeCollector.getTokenSpentEpochBalance(this.weth.address, 0));
-            const inchBalanceAfterNotifyFill = (await this.feeCollector.getInchBalanceEpochBalance(this.weth.address, 0));
+            const userBalanceAfter = await this.weth.balanceOf(currentUserAddress);
+            const fcBalanceAfter = await this.weth.balanceOf(this.feeCollector.address);
+            const userTokenBalanceAfter = await this.token.balanceOf(currentUserAddress);
+            const fcTokenBalanceAfter = await this.token.balanceOf(this.feeCollector.address);
 
             // assert
-            expect(wethSpentAfterNotifyFill).to.be.bignumber.equal(wethSpentBeforeNotifyFill.add(wethCount));
+            expect(userBalanceAfter).to.be.bignumber.equal(userBalanceBefore.add(wethCount));
+            expect(fcBalanceAfter).to.be.bignumber.equal(fcBalanceBefore.sub(wethCount));
+            expect(userTokenBalanceAfter).to.be.bignumber.equal(userTokenBalanceBefore.sub(ether(wethCount))); // based on MIN_VALUE = 100e18
+            expect(fcTokenBalanceAfter).to.be.bignumber.equal(fcTokenBalanceBefore.add(ether(wethCount)));
         });
     });
 

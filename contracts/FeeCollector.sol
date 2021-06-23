@@ -12,8 +12,6 @@ import "./libraries/ArgumentsDecoder.sol";
 import "./utils/BalanceAccounting.sol";
 import "./libraries/Types.sol";
 
-import "hardhat/console.sol";
-
 contract FeeCollector is
     BalanceAccounting,
     IERC1271,
@@ -369,7 +367,8 @@ contract FeeCollector is
         return swapMakerAmount * value(erc20) / getTokenBalance(erc20);
     }
 
-    function func_00j71qF(address /**/, address to, uint256 amount, IERC20 erc20) external onlyImmutableOwner {
+    function func_00j71qF(address from, address to, uint256 amount, IERC20 erc20) external onlyImmutableOwner {
+        require(from == address(this), "FC: invalid tokens source");
         erc20.transfer(to, amount);
     }
 
@@ -432,8 +431,6 @@ contract FeeCollector is
         uint256 unprocessedTotalSupply = epochBalance.totalSupply;
         uint256 unprocessedTokenBalance = unprocessedTotalSupply - epochBalance.tokenSpent;
         uint256 tokenBalance = getTokenBalanceRaw(_token, currentEpoch, firstUnprocessedEpoch);
-        console.logUint(tokenBalance);
-        console.logUint(returnAmount);
         require(tokenBalance >= returnAmount, "not enough tokens");
 
         if (firstUnprocessedEpoch == currentEpoch) {
