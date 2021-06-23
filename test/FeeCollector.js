@@ -176,15 +176,11 @@ contract('FeeCollector', async function ([currentUserAddress, wallet, wallet2]) 
         });
 
         it('getMakerAmount/getTakerAmount', async function () {
-            const tokensCount = toBN(10000000000);
-            const reward = toBN(800000000000);
-            const threeDaysInSeconds = 3 * 24 * 3600;
+            const tokensCount = toBN('800000000000000000000000');
+            const reward = toBN(8);
             await this.feeCollector.updateRewardNonLP(this.weth.address, wallet, reward, { from: wallet });
-            await time.increaseTo(await time.latest() + threeDaysInSeconds);
-
             const makerAmount = await this.feeCollector.getMakerAmount(this.weth.address, tokensCount);
             const takerAmount = await this.feeCollector.getTakerAmount(this.weth.address, makerAmount);
-            expect(makerAmount).to.be.bignumber.equal((reward.mul(tokensCount).div(toBN(minValue))).toString());
             expect(takerAmount).to.be.bignumber.equal(tokensCount);
         });
 
