@@ -24,9 +24,10 @@ contract LimitOrderProtocolMock is EIP712("1inch Limit Order Protocol", "1")
     uint256 constant private _TO_INDEX = 1;
     uint256 constant private _AMOUNT_INDEX = 2;
     mapping(bytes32 => uint256) private _remaining;
+    // solhint-disable-next-line var-name-mixedcase
     bytes4 immutable private _MAX_SELECTOR = bytes4(uint32(IERC20.transferFrom.selector) + 10);
 
-    bytes32 constant public _LIMIT_ORDER_TYPEHASH = keccak256(
+    bytes32 constant private _LIMIT_ORDER_TYPEHASH = keccak256(
         "Order(uint256 salt,address makerAsset,address takerAsset,bytes makerAssetData,bytes takerAssetData,bytes getMakerAmount,bytes getTakerAmount,bytes predicate,bytes permit,bytes interaction)"
     );
 

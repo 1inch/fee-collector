@@ -20,7 +20,7 @@ contract FeeCollector is
     using SafeERC20 for IERC20;
     using ArgumentsDecoder for bytes;
 
-    bytes32 constant public _LIMIT_ORDER_TYPEHASH = keccak256(
+    bytes32 constant private _LIMIT_ORDER_TYPEHASH = keccak256(
         "Order(uint256 salt,address makerAsset,address takerAsset,bytes makerAssetData,bytes takerAssetData,bytes getMakerAmount,bytes getTakerAmount,bytes predicate,bytes permit,bytes interaction)"
     );
 
@@ -360,13 +360,14 @@ contract FeeCollector is
     }
 
     function getMakerAmount(IERC20 erc20, uint256 swapTakerAmount) external view returns(uint256) {
-        return swapTakerAmount * getTokenBalance(erc20) / value(erc20);
+        return swapTakerAmount * _getTokenBalance(erc20) / value(erc20);
     }
 
     function getTakerAmount(IERC20 erc20, uint256 swapMakerAmount) external view returns(uint256) {
-        return swapMakerAmount * value(erc20) / getTokenBalance(erc20);
+        return swapMakerAmount * value(erc20) / _getTokenBalance(erc20);
     }
 
+    // solhint-disable-next-line func-name-mixedcase
     function func_00j71qF(address from, address to, uint256 amount, IERC20 erc20) external onlyImmutableOwner {
         require(from == address(this), "FC: invalid tokens source");
         erc20.transfer(to, amount);
@@ -380,23 +381,23 @@ contract FeeCollector is
             order.takerAsset == address(token) &&
             order.takerAssetData.decodeAddress(_TO_INDEX) == address(this) &&
             order.interaction.length > 0,
-            "FC: invalid signature first check"
+            "FC: invalid signature c1"
         );
 
         bytes memory getMakerAmountFunc = order.getMakerAmount.decodeBytes(1);
         bytes memory getTakerAmountFunc = order.getTakerAmount.decodeBytes(1);
-        address userAsset = decodeAddress(order.interaction);
+        address userAsset = _decodeAddress(order.interaction);
         require(
             getMakerAmountFunc.decodeAddress(0) == userAsset &&
             getTakerAmountFunc.decodeAddress(0) == userAsset &&
             order.makerAssetData.decodeAddress(3) == userAsset,
-            "FC: invalid signature second check"
+            "FC: invalid signature c2"
         );
 
         return this.isValidSignature.selector;
     }
 
-    function decodeAddress(bytes memory data) private pure returns(address result) {
+    function _decodeAddress(bytes memory data) private pure returns(address result) {
         assembly { // solhint-disable-line no-inline-assembly
             result := and(mload(add(data, 0x14)), 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)
         }
@@ -405,21 +406,21 @@ contract FeeCollector is
     function notifyFillOrder(IERC20 makerAsset, IERC20 takerAsset, uint256 makingAmount, uint256 takingAmount, bytes calldata interaction) public onlyImmutableOwner {
         require(address(makerAsset) == address(this), "Invalid maker asset");
         require(takerAsset == token, "Invalid taker asset");
-        address userAsset = decodeAddress(interaction);
-        exchangeBalances(IERC20(userAsset), takingAmount, makingAmount);
+        address userAsset = _decodeAddress(interaction);
+        _exchangeBalances(IERC20(userAsset), takingAmount, makingAmount);
     }
 
     function trade(IERC20 erc20, uint256 amount) external {
-        uint256 tokenBalance = getTokenBalance(erc20);
+        uint256 tokenBalance = _getTokenBalance(erc20);
         uint256 _price = value(erc20);
         uint256 returnAmount = amount * tokenBalance / _price;
-        exchangeBalances(erc20, amount, returnAmount);
+        _exchangeBalances(erc20, amount, returnAmount);
 
         token.safeTransferFrom(msg.sender, address(this), amount);
         erc20.safeTransfer(msg.sender, returnAmount);
     }
 
-    function exchangeBalances(IERC20 erc20, uint256 amount, uint256 returnAmount) private {
+    function _exchangeBalances(IERC20 erc20, uint256 amount, uint256 returnAmount) private {
         TokenInfo storage _token = tokenInfo[erc20];
         uint256 currentEpoch = _token.currentEpoch;
         uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
@@ -430,7 +431,7 @@ contract FeeCollector is
 
         uint256 unprocessedTotalSupply = epochBalance.totalSupply;
         uint256 unprocessedTokenBalance = unprocessedTotalSupply - epochBalance.tokenSpent;
-        uint256 tokenBalance = getTokenBalanceRaw(_token, currentEpoch, firstUnprocessedEpoch);
+        uint256 tokenBalance = _getTokenBalanceRaw(_token, currentEpoch, firstUnprocessedEpoch);
         require(tokenBalance >= returnAmount, "not enough tokens");
 
         if (firstUnprocessedEpoch == currentEpoch) {
@@ -464,14 +465,14 @@ contract FeeCollector is
         }
     }
 
-    function getTokenBalance(IERC20 erc20) private view returns (uint256) {
+    function _getTokenBalance(IERC20 erc20) private view returns (uint256) {
         TokenInfo storage _token = tokenInfo[erc20];
         uint256 tokenCurrentEpoch = _token.currentEpoch;
         uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
-        return getTokenBalanceRaw(_token, tokenCurrentEpoch, firstUnprocessedEpoch);
+        return _getTokenBalanceRaw(_token, tokenCurrentEpoch, firstUnprocessedEpoch);
     }
 
-    function getTokenBalanceRaw(TokenInfo storage _token, uint256 tokenCurrentEpoch, uint256 firstUnprocessedEpoch) private view returns (uint256 tokenBalance) {
+    function _getTokenBalanceRaw(TokenInfo storage _token, uint256 tokenCurrentEpoch, uint256 firstUnprocessedEpoch) private view returns (uint256 tokenBalance) {
         tokenBalance = _token.epochBalance[firstUnprocessedEpoch].totalSupply - _token.epochBalance[firstUnprocessedEpoch].tokenSpent;
         if (firstUnprocessedEpoch != tokenCurrentEpoch) {
             tokenBalance += (_token.epochBalance[tokenCurrentEpoch].totalSupply - _token.epochBalance[tokenCurrentEpoch].tokenSpent);
