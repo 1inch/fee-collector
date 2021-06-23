@@ -219,6 +219,39 @@ contract('FeeCollector', async function ([currentUserAddress, wallet, wallet2]) 
             expect(wethSpentAfterNotifyFill).to.be.bignumber.equal(wethSpentBeforeNotifyFill.add(wethCount));
             expect(inchBalanceAfterNotifyFill).to.be.bignumber.equal(inchBalanceBeforeNotifyFill.add(inchesCount));
         });
+
+
+
+        it('integrational', async function () {
+            // setup
+            const reward = toBN(100);
+            const fc = await FeeCollector.new(this.token.address, minValue, deceleration, currentUserAddress);
+            const lop = await LimitOrderProtocolMock.new();
+
+            await this.weth.mint(wallet, ether('1000000'));
+            await this.weth.approve(fc.address, ether('1000000'), { from: wallet });
+
+            await this.token.mint(fc.address, ether('1000'));
+
+            await this.token.mint(wallet2, ether('1000000'));
+            await this.token.approve(fc.address, ether('1000000'), { from: wallet2 });
+
+            await this.weth.updateReward(fc.address, wallet, reward, { from: wallet });
+
+            const wethCount = toBN(5);
+            const inchesCount = toBN(10);
+
+            // act
+            const wethSpentBeforeNotifyFill = (await fc.getTokenSpentEpochBalance(this.weth.address, 0));
+            const inchBalanceBeforeNotifyFill = (await fc.getInchBalanceEpochBalance(this.weth.address, 0));
+            await fc.notifyFillOrder(fc.address, this.token.address, inchesCount, wethCount, this.weth.address);
+            const wethSpentAfterNotifyFill = (await fc.getTokenSpentEpochBalance(this.weth.address, 0));
+            const inchBalanceAfterNotifyFill = (await fc.getInchBalanceEpochBalance(this.weth.address, 0));
+
+            // assert
+            expect(wethSpentAfterNotifyFill).to.be.bignumber.equal(wethSpentBeforeNotifyFill.add(wethCount));
+            expect(inchBalanceAfterNotifyFill).to.be.bignumber.equal(inchBalanceBeforeNotifyFill.add(inchesCount));
+        });
     });
 
     describe('valueForTime', async function () {
