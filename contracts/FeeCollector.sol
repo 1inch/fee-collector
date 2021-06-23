@@ -362,22 +362,6 @@ contract FeeCollector is
         _updateReward(erc20, referral, amount);
     }
 
-    function trade(IERC20 erc20, uint256 amount) external {
-        TokenInfo storage _token = tokenInfo[erc20];
-        uint256 currentEpoch = _token.currentEpoch;
-        uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
-        EpochBalance storage epochBalance = _token.epochBalance[firstUnprocessedEpoch];
-        EpochBalance storage currentEpochBalance = _token.epochBalance[currentEpoch];
-
-        uint256 currentEpochStored = currentEpoch;
-
-        uint256 unprocessedTotalSupply = epochBalance.totalSupply;
-        uint256 unprocessedTokenBalance = unprocessedTotalSupply - epochBalance.tokenSpent;
-        uint256 tokenBalance = unprocessedTokenBalance;
-        if (firstUnprocessedEpoch != currentEpoch) {
-            tokenBalance += currentEpochBalance.totalSupply - currentEpochBalance.tokenSpent;
-        }
-
     function getMakerAmount(IERC20 erc20, uint256 swapTakerAmount) external view returns(uint256) {
         return swapTakerAmount * getTokenBalance(erc20) / value(erc20);
     }
@@ -441,16 +425,22 @@ contract FeeCollector is
 
     function exchangeBalances(IERC20 erc20, uint256 amount, uint256 returnAmount) private {
         TokenInfo storage _token = tokenInfo[erc20];
-        uint256 tokenCurrentEpoch = _token.currentEpoch;
+        uint256 currentEpoch = _token.currentEpoch;
         uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
         EpochBalance storage epochBalance = _token.epochBalance[firstUnprocessedEpoch];
-        EpochBalance storage currentEpochBalance = _token.epochBalance[tokenCurrentEpoch];
-        uint256 tokenBalance = getTokenBalanceRaw(_token, tokenCurrentEpoch, firstUnprocessedEpoch);
+        EpochBalance storage currentEpochBalance = _token.epochBalance[currentEpoch];
+
+        uint256 currentEpochStored = currentEpoch;
+
+        uint256 unprocessedTotalSupply = epochBalance.totalSupply;
+        uint256 unprocessedTokenBalance = unprocessedTotalSupply - epochBalance.tokenSpent;
+        uint256 tokenBalance = getTokenBalanceRaw(_token, currentEpoch, firstUnprocessedEpoch);
         require(tokenBalance >= returnAmount, "not enough tokens");
 
         if (firstUnprocessedEpoch == currentEpoch) {
             currentEpoch += 1;
         }
+
         _updateTokenState(erc20, -int256(returnAmount), currentEpochStored, firstUnprocessedEpoch);
 
         if (returnAmount <= unprocessedTokenBalance) {
@@ -635,10 +625,6 @@ contract FeeCollector is
 
     function getInchBalanceEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256) {
         return tokenInfo[_token].epochBalance[epoch].inchBalance;
-    }
-
-    function getFirstUserUnprocessedEpoch(address user, IERC20 _token) external view returns(uint256) {
-        return tokenInfo[_token].firstUserUnprocessedEpoch[user];
     }
 
     function _hash(Types.Order memory order) internal view returns(bytes32) {
