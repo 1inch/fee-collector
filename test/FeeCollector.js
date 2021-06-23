@@ -12,18 +12,16 @@ function toBN (num) {
 async function getTokenInfo (feeCollector, token, user, epoch) {
     const tokenInfo = await feeCollector.tokenInfo.call(token);
 
-    const userEpochBalance = await feeCollector.getUserEpochBalance.call(user, token, epoch);
-    const totalSupplyEpochBalance = await feeCollector.getTotalSupplyEpochBalance.call(token, epoch);
-    const tokenSpentEpochBalance = await feeCollector.getTokenSpentEpochBalance.call(token, epoch);
-    const inchBalanceEpochBalance = await feeCollector.getInchBalanceEpochBalance.call(token, epoch);
-    const firstUserUnprocessedEpoch = await feeCollector.getFirstUserUnprocessedEpoch.call(user, token);
+    const userEpochBalance = await feeCollector.getUserEpochBalance.call(token, epoch, user);
+    const {totalSupply, tokenSpent, inchBalance} = await feeCollector.getEpochBalance.call(token, epoch);
+    const firstUserUnprocessedEpoch = await feeCollector.getFirstUserUnprocessedEpoch.call(token, user);
 
     return {
         epochBalance: {
             userBalance: userEpochBalance,
-            totalSupply: totalSupplyEpochBalance,
-            tokenSpent: tokenSpentEpochBalance,
-            inchBalance: inchBalanceEpochBalance,
+            totalSupply: totalSupply,
+            tokenSpent: tokenSpent,
+            inchBalance: inchBalance,
         },
         firstUnprocessedEpoch: tokenInfo.firstUnprocessedEpoch,
         currentEpoch: tokenInfo.currentEpoch,
@@ -39,11 +37,11 @@ async function getTokenBalance (feeCollector, token) {
     const currentEpoch = tokenInfo.currentEpoch;
     const firstUnprocessedEpoch = tokenInfo.firstUnprocessedEpoch;
 
-    let tokenSpent = await feeCollector.getTokenSpentEpochBalance.call(token, firstUnprocessedEpoch);
-    let totalSupply = await feeCollector.getTotalSupplyEpochBalance.call(token, firstUnprocessedEpoch);
+    let { totalSupply, tokenSpent } = await feeCollector.getEpochBalance.call(token, firstUnprocessedEpoch);
     if (!firstUnprocessedEpoch.eq(currentEpoch)) {
-        tokenSpent = tokenSpent.add(await feeCollector.getTokenSpentEpochBalance.call(token, currentEpoch));
-        totalSupply = totalSupply.add(await feeCollector.getTotalSupplyEpochBalance.call(token, currentEpoch));
+        const currentEpochBalance = await feeCollector.getEpochBalance.call(token, currentEpoch);
+        tokenSpent = tokenSpent.add(currentEpochBalance.tokenSpent);
+        totalSupply = totalSupply.add(currentEpochBalance.totalSupply);
     }
     return totalSupply.sub(tokenSpent);
 }

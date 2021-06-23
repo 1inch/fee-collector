@@ -99,24 +99,17 @@ contract FeeCollector is Ownable, BalanceAccounting {
         return string(abi.encodePacked("fee-", IERC20Metadata(address(token)).symbol()));
     }
 
-    function getUserEpochBalance(address user, IERC20 _token, uint256 epoch) external view returns(uint256) {
-        return tokenInfo[_token].epochBalance[epoch].balances[user];
+    function getEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256 totalSupply, uint256 tokenSpent, uint256 inchBalance) {
+        EpochBalance storage epochBalance = tokenInfo[_token].epochBalance[epoch];
+        (totalSupply, tokenSpent, inchBalance) = (epochBalance.totalSupply, epochBalance.tokenSpent, epochBalance.inchBalance);
     }
 
-    function getTotalSupplyEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256) {
-        return tokenInfo[_token].epochBalance[epoch].totalSupply;
+    function getUserEpochBalance(IERC20 _token, uint256 epoch, address user) external view returns(uint256 balance) {
+        balance = tokenInfo[_token].epochBalance[epoch].balances[user];
     }
 
-    function getTokenSpentEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256) {
-        return tokenInfo[_token].epochBalance[epoch].tokenSpent;
-    }
-
-    function getInchBalanceEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256) {
-        return tokenInfo[_token].epochBalance[epoch].inchBalance;
-    }
-
-    function getFirstUserUnprocessedEpoch(address user, IERC20 _token) external view returns(uint256) {
-        return tokenInfo[_token].firstUserUnprocessedEpoch[user];
+    function getFirstUserUnprocessedEpoch(IERC20 _token, address user) external view returns(uint256 firstUserUnprocessedEpoch) {
+        firstUserUnprocessedEpoch = tokenInfo[_token].firstUserUnprocessedEpoch[user];
     }
 
     function decelerationTable() public view returns(uint256[20] memory) {
