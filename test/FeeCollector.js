@@ -16,7 +16,7 @@ function toBN (num) {
 async function getTokenInfo (feeCollector, token, user, epoch) {
     const tokenInfo = await feeCollector.tokenInfo.call(token);
 
-    const userEpochBalance = await feeCollector.getUserEpochBalance.call(token, epoch, user);
+    const userEpochBalance = await feeCollector.getUserEpochBalance.call(user, token, epoch);
     const { totalSupply, tokenSpent, inchBalance } = await feeCollector.getEpochBalance.call(token, epoch);
     const firstUserUnprocessedEpoch = await feeCollector.getFirstUserUnprocessedEpoch.call(token, user);
 
@@ -208,15 +208,13 @@ contract('FeeCollector', async function ([currentUserAddress, wallet, wallet2]) 
             const inchesCount = toBN(10);
 
             // act
-            const wethSpentBeforeNotifyFill = (await fc.getTokenSpentEpochBalance(this.weth.address, 0));
-            const inchBalanceBeforeNotifyFill = (await fc.getInchBalanceEpochBalance(this.weth.address, 0));
+            const balanceBeforeNotifyFill = (await fc.getEpochBalance(this.weth.address, 0));
             await fc.notifyFillOrder(fc.address, this.token.address, wethCount, inchesCount, this.weth.address);
-            const wethSpentAfterNotifyFill = (await fc.getTokenSpentEpochBalance(this.weth.address, 0));
-            const inchBalanceAfterNotifyFill = (await fc.getInchBalanceEpochBalance(this.weth.address, 0));
+            const balanceAfterNotifyFill = (await fc.getEpochBalance(this.weth.address, 0));
 
             // assert
-            expect(wethSpentAfterNotifyFill).to.be.bignumber.equal(wethSpentBeforeNotifyFill.add(wethCount));
-            expect(inchBalanceAfterNotifyFill).to.be.bignumber.equal(inchBalanceBeforeNotifyFill.add(inchesCount));
+            expect(balanceAfterNotifyFill.tokenSpent).to.be.bignumber.equal(balanceBeforeNotifyFill.tokenSpent.add(wethCount));
+            expect(balanceAfterNotifyFill.inchBalance).to.be.bignumber.equal(balanceBeforeNotifyFill.inchBalance.add(inchesCount));
         });
 
         it('integrational', async function () {
