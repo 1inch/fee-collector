@@ -16,7 +16,7 @@ function toBN (num) {
 async function getTokenInfo (feeCollector, token, user, epoch) {
     const tokenInfo = await feeCollector.tokenInfo.call(token);
 
-    const userEpochBalance = await feeCollector.getUserEpochBalance.call(user, token, epoch);
+    const userEpochBalance = await feeCollector.getUserEpochBalance.call(token, epoch, user);
     const { totalSupply, tokenSpent, inchBalance } = await feeCollector.getEpochBalance.call(token, epoch);
     const firstUserUnprocessedEpoch = await feeCollector.getFirstUserUnprocessedEpoch.call(token, user);
 

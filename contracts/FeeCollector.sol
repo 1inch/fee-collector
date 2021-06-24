@@ -122,6 +122,10 @@ contract FeeCollector is
         (totalSupply, tokenSpent, inchBalance) = (epochBalance.totalSupply, epochBalance.tokenSpent, epochBalance.inchBalance);
     }
 
+    function getUserEpochBalance(IERC20 _token, uint256 epoch, address user) external view returns(uint256 balance) {
+        balance = tokenInfo[_token].epochBalance[epoch].balances[user];
+    }
+
     function getFirstUserUnprocessedEpoch(IERC20 _token, address user) external view returns(uint256 firstUserUnprocessedEpoch) {
         firstUserUnprocessedEpoch = tokenInfo[_token].firstUserUnprocessedEpoch[user];
     }
@@ -602,10 +606,6 @@ contract FeeCollector is
             _token.epochBalance[epoch].totalSupply = totalSupply - share;
             _token.epochBalance[epoch].inchBalance = inchBalance - collected;
         }
-    }
-
-    function getUserEpochBalance(address user, IERC20 _token, uint256 epoch) external view returns(uint256) {
-        return tokenInfo[_token].epochBalance[epoch].balances[user];
     }
 
     function _hash(Types.Order memory order) internal view returns(bytes32) {
