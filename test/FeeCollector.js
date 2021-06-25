@@ -862,6 +862,7 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
             const firstUnprocessedEpoch = tokenInfo.firstUnprocessedEpoch;
 
             tokenInfo = await getTokenInfo(this.feeCollector, this.weth.address, wallet2, firstUnprocessedEpoch);
+            const tokenInfoTokenBalance = tokenInfo.epochBalance.tokenSpent;
             const tokenInfoInchBalance = tokenInfo.epochBalance.inchBalance;
 
             await this.feeCollector.claimFrozenEpoch(this.weth.address, { from: wallet2 });
@@ -869,7 +870,7 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
             const balanceWeth2 = await this.weth.balanceOf.call(wallet2);
             const balanceToken2 = await this.token.balanceOf.call(wallet2);
 
-            expect(balanceWeth2).to.be.bignumber.equal(balanceWeth1);
+            expect(balanceWeth2).to.be.bignumber.equal(balanceWeth1.add(tokenInfoTokenBalance));
             expect(balanceToken2).to.be.bignumber.equal(balanceToken1.add(tokenInfoInchBalance));
 
             tokenInfo = await getTokenInfo(this.feeCollector, this.weth.address, wallet2, firstUnprocessedEpoch);
