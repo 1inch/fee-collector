@@ -3,7 +3,7 @@ const { expect } = require('chai');
 const { bufferToHex } = require('ethereumjs-util');
 const ethSigUtil = require('eth-sig-util');
 const { ABIOrder, buildOrderData } = require('./helpers/orderUtils');
-const { cutLastArgUnaligned, assertThrowsAsync} = require('./helpers/utils');
+const { cutLastArgUnaligned, assertThrowsAsync } = require('./helpers/utils');
 const { profileEVM } = require('./helpers/profileEVM');
 const TokenMock = artifacts.require('TokenMock');
 const LimitOrderProtocolMock = artifacts.require('LimitOrderProtocolMock');
@@ -177,7 +177,7 @@ contract('FeeCollector', async function ([currentUserAddress, wallet, wallet2]) 
             expect(result).equal('0x1626ba7e');
         });
 
-        it.only('isValidSignature/invalid hash', async function () {
+        it('isValidSignature/hash', async function () {
             const order = this.buildOrder(this.swap, this.feeCollector, this.token, 1, 1, this.feeCollector.address);
             const data = buildOrderData(this.chainId + 1, this.swap.address, order);
             const orderHash = bufferToHex(ethSigUtil.TypedDataUtils.sign(data));
@@ -185,31 +185,82 @@ contract('FeeCollector', async function ([currentUserAddress, wallet, wallet2]) 
 
             await assertThrowsAsync(
                 () => this.feeCollector.isValidSignature.call(orderHash, signature),
-                (error) => expect(error.toString()).to.contain('invalid signature c1')
+                (error) => expect(error.toString()).to.contain('invalid signature c1'),
             );
         });
 
-
-        it.only('isValidSignature/invalid maker asset', async function () {
+        it('isValidSignature/maker asset', async function () {
             await assertInvalidSignatureThrows(
                 this,
-                (order) =>  order.makerAsset = order.takerAsset,
+                (order) => {
+                    order.makerAsset = order.takerAsset;
+                },
                 'invalid signature c1');
         });
 
-        it.only('isValidSignature/invalid taker asset', async function () {
+        it('isValidSignature/taker asset', async function () {
             await assertInvalidSignatureThrows(
                 this,
-                (order) => order.takerAsset = order.makerAsset,
+                (order) => {
+                    order.takerAsset = order.makerAsset;
+                },
                 'invalid signature c1');
         });
 
-        it.only('isValidSignature/invalid tokens destination', async function () {
+        it('isValidSignature/tokens destination', async function () {
             await assertInvalidSignatureThrows(
                 this,
-                (order) => order.takerAssetData =
-                    this.token.contract.methods.transferFrom(wallet, wallet2, 10).encodeABI(),
+                (order) => {
+                    order.takerAssetData = this.token.contract.methods.transferFrom(wallet, wallet2, 10).encodeABI();
+                },
                 'invalid signature c1');
+        });
+
+        it('isValidSignature/empty interaction', async function () {
+            await assertInvalidSignatureThrows(
+                this,
+                (order) => {
+                    order.interaction = '0x';
+                },
+                'invalid signature c1');
+        });
+
+        it('isValidSignature/invalid interaction', async function () {
+            await assertInvalidSignatureThrows(
+                this,
+                (order) => {
+                    order.interaction = order.makerAsset;
+                },
+                'invalid signature c2');
+        });
+
+        it('isValidSignature/getMakerAmount', async function () {
+            await assertInvalidSignatureThrows(
+                this,
+                (order) => {
+                    order.getMakerAmount = cutLastArgUnaligned(this.feeCollector.contract.methods.getMakerAmount(this.feeCollector.address, 0).encodeABI(),
+                        (x) => this.swap.contract.methods.arbitraryStaticCall(this.feeCollector.address, x).encodeABI());
+                },
+                'invalid signature c2');
+        });
+
+        it('isValidSignature/getTakerAmount', async function () {
+            await assertInvalidSignatureThrows(
+                this,
+                (order) => {
+                    order.getTakerAmount = cutLastArgUnaligned(this.feeCollector.contract.methods.getTakerAmount(this.feeCollector.address, 0).encodeABI(),
+                        (x) => this.swap.contract.methods.arbitraryStaticCall(this.feeCollector.address, x).encodeABI());
+                },
+                'invalid signature c2');
+        });
+
+        it('isValidSignature/makerAssetData', async function () {
+            await assertInvalidSignatureThrows(
+                this,
+                (order) => {
+                    order.makerAssetData = this.feeCollector.contract.methods.func_00j71qF(this.feeCollector.address, this.feeCollector.address, 10, this.feeCollector.address).encodeABI();
+                },
+                'invalid signature c2');
         });
 
         it('getMakerAmount/getTakerAmount', async function () {
@@ -288,16 +339,16 @@ contract('FeeCollector', async function ([currentUserAddress, wallet, wallet2]) 
             expect(fcTokenBalanceAfter).to.be.bignumber.equal(fcTokenBalanceBefore.add(ether(wethCount)));
         });
 
-        async function assertInvalidSignatureThrows(self, orderUpdateFunc, expectedErrorMessage) {
+        async function assertInvalidSignatureThrows (self, orderUpdateFunc, expectedErrorMessage) {
             const order = self.buildOrder(self.swap, self.feeCollector, self.token, 1, 1, self.feeCollector.address);
-            orderUpdateFunc(order)
+            orderUpdateFunc(order);
             const data = buildOrderData(self.chainId, self.swap.address, order);
             const orderHash = bufferToHex(ethSigUtil.TypedDataUtils.sign(data));
             const signature = web3.eth.abi.encodeParameter(ABIOrder, order);
 
             await assertThrowsAsync(
                 () => self.feeCollector.isValidSignature.call(orderHash, signature),
-                (error) => expect(error.toString()).to.contain(expectedErrorMessage)
+                (error) => expect(error.toString()).to.contain(expectedErrorMessage),
             );
         }
     });

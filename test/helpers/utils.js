@@ -16,14 +16,14 @@ function cutLastArgUnaligned (data, wrapperDataFactory) {
     return cutLastArg(wrapperDataFactory(data), (64 - (data.length - 2) % 64) % 64);
 }
 
-async function assertThrowsAsync(testFunc, errorFunc) {
+async function assertThrowsAsync (testFunc, errorFunc) {
     try {
         await testFunc();
     } catch (error) {
         errorFunc(error);
         return;
     }
-    throw new Error("Test should have thrown an error but didn't");
+    throw new Error('Test should have thrown an error but didn\'t');
 }
 
 module.exports = {
@@ -31,5 +31,5 @@ module.exports = {
     toBN,
     cutLastArg,
     cutLastArgUnaligned,
-    assertThrowsAsync
+    assertThrowsAsync,
 };
