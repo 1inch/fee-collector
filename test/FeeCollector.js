@@ -3,7 +3,7 @@ const { expect } = require('chai');
 const { bufferToHex } = require('ethereumjs-util');
 const ethSigUtil = require('eth-sig-util');
 const { ABIOrder, buildOrderData } = require('./helpers/orderUtils');
-const { cutLastArgUnaligned } = require('./helpers/utils');
+const { cutLastArgUnaligned, assertThrowsAsync} = require('./helpers/utils');
 const { profileEVM } = require('./helpers/profileEVM');
 const TokenMock = artifacts.require('TokenMock');
 const LimitOrderProtocolMock = artifacts.require('LimitOrderProtocolMock');
@@ -167,7 +167,7 @@ contract('FeeCollector', async function ([currentUserAddress, wallet, wallet2]) 
     });
 
     describe('LimitOrderProtocol', async function () {
-        it('isValidSignature', async function () {
+        it('isValidSignature/happy path', async function () {
             const order = this.buildOrder(this.swap, this.feeCollector, this.token, 1, 1, this.feeCollector.address);
             const data = buildOrderData(this.chainId, this.swap.address, order);
             const orderHash = bufferToHex(ethSigUtil.TypedDataUtils.sign(data));
@@ -175,6 +175,41 @@ contract('FeeCollector', async function ([currentUserAddress, wallet, wallet2]) 
             const result = await this.feeCollector.isValidSignature.call(orderHash, signature);
 
             expect(result).equal('0x1626ba7e');
+        });
+
+        it.only('isValidSignature/invalid hash', async function () {
+            const order = this.buildOrder(this.swap, this.feeCollector, this.token, 1, 1, this.feeCollector.address);
+            const data = buildOrderData(this.chainId + 1, this.swap.address, order);
+            const orderHash = bufferToHex(ethSigUtil.TypedDataUtils.sign(data));
+            const signature = web3.eth.abi.encodeParameter(ABIOrder, order);
+
+            await assertThrowsAsync(
+                () => this.feeCollector.isValidSignature.call(orderHash, signature),
+                (error) => expect(error.toString()).to.contain('invalid signature c1')
+            );
+        });
+
+
+        it.only('isValidSignature/invalid maker asset', async function () {
+            await assertInvalidSignatureThrows(
+                this,
+                (order) =>  order.makerAsset = order.takerAsset,
+                'invalid signature c1');
+        });
+
+        it.only('isValidSignature/invalid taker asset', async function () {
+            await assertInvalidSignatureThrows(
+                this,
+                (order) => order.takerAsset = order.makerAsset,
+                'invalid signature c1');
+        });
+
+        it.only('isValidSignature/invalid tokens destination', async function () {
+            await assertInvalidSignatureThrows(
+                this,
+                (order) => order.takerAssetData =
+                    this.token.contract.methods.transferFrom(wallet, wallet2, 10).encodeABI(),
+                'invalid signature c1');
         });
 
         it('getMakerAmount/getTakerAmount', async function () {
@@ -252,6 +287,19 @@ contract('FeeCollector', async function ([currentUserAddress, wallet, wallet2]) 
             expect(userTokenBalanceAfter).to.be.bignumber.equal(userTokenBalanceBefore.sub(ether(wethCount))); // based on MIN_VALUE = 100e18
             expect(fcTokenBalanceAfter).to.be.bignumber.equal(fcTokenBalanceBefore.add(ether(wethCount)));
         });
+
+        async function assertInvalidSignatureThrows(self, orderUpdateFunc, expectedErrorMessage) {
+            const order = self.buildOrder(self.swap, self.feeCollector, self.token, 1, 1, self.feeCollector.address);
+            orderUpdateFunc(order)
+            const data = buildOrderData(self.chainId, self.swap.address, order);
+            const orderHash = bufferToHex(ethSigUtil.TypedDataUtils.sign(data));
+            const signature = web3.eth.abi.encodeParameter(ABIOrder, order);
+
+            await assertThrowsAsync(
+                () => self.feeCollector.isValidSignature.call(orderHash, signature),
+                (error) => expect(error.toString()).to.contain(expectedErrorMessage)
+            );
+        }
     });
 
     describe('valueForTime', async function () {
