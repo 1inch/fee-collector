@@ -276,7 +276,7 @@ contract FeeCollector is BalanceAccounting {
         erc20.safeTransferFrom(msg.sender, address(this), amount);
     }
 
-    function trade(IERC20 erc20, uint256 amount) external {
+    function trade(IERC20 erc20, uint256 amount, uint256 minReturn) external {
         TokenInfo storage _token = tokenInfo[erc20];
         uint256 currentEpoch = _token.currentEpoch;
         uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
@@ -294,6 +294,7 @@ contract FeeCollector is BalanceAccounting {
 
         uint256 returnAmount = amount * tokenBalance / value(erc20);
         require(tokenBalance >= returnAmount, "not enough tokens");
+        require(returnAmount >= minReturn, "minReturn not met");
 
         if (firstUnprocessedEpoch == currentEpoch) {
             currentEpoch += 1;
