@@ -5,10 +5,11 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import "./interfaces/IFeeCollector.sol";
 import "./utils/BalanceAccounting.sol";
 
 
-contract FeeCollector is BalanceAccounting {
+contract FeeCollector is IFeeCollector, BalanceAccounting {
     using SafeERC20 for IERC20;
 
     struct EpochBalance {
@@ -261,17 +262,17 @@ contract FeeCollector is BalanceAccounting {
         }
     }
 
-    function updateRewards(address[] calldata receivers, uint256[] calldata amounts) external {
+    function updateRewards(address[] calldata receivers, uint256[] calldata amounts) external override {
         for (uint i = 0; i < receivers.length; i++) {
             _updateReward(IERC20(msg.sender), receivers[i], amounts[i]);
         }
     }
 
-    function updateReward(address referral, uint256 amount) external {
+    function updateReward(address referral, uint256 amount) external override {
         _updateReward(IERC20(msg.sender), referral, amount);
     }
 
-    function updateRewardNonLP(IERC20 erc20, address referral, uint256 amount) external {
+    function updateRewardNonLP(IERC20 erc20, address referral, uint256 amount) external override {
         _updateReward(erc20, referral, amount);
         erc20.safeTransferFrom(msg.sender, address(this), amount);
     }
