@@ -289,7 +289,7 @@ contract FeeCollector is BalanceAccounting {
         uint256 unprocessedTokenBalance = unprocessedTotalSupply - epochBalance.tokenSpent;
         uint256 tokenBalance = unprocessedTokenBalance;
         if (firstUnprocessedEpoch != currentEpoch) {
-            tokenBalance += currentEpochBalance.totalSupply - currentEpochBalance.tokenSpent;
+            tokenBalance += currentEpochBalance.totalSupply;
         }
 
         uint256 returnAmount = amount * tokenBalance / value(erc20);
@@ -398,7 +398,7 @@ contract FeeCollector is BalanceAccounting {
 
         uint256 fee = _token.epochBalance[firstUnprocessedEpoch].totalSupply - _token.epochBalance[firstUnprocessedEpoch].tokenSpent;
         if (firstUnprocessedEpoch != currentEpoch) {
-            fee += (_token.epochBalance[currentEpoch].totalSupply - _token.epochBalance[currentEpoch].tokenSpent);
+            fee += _token.epochBalance[currentEpoch].totalSupply;
         }
 
         uint256 feeWithAmount = (amount >= 0 ? fee + uint256(amount) : fee - uint256(-amount));
