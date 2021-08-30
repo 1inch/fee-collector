@@ -1,8 +1,12 @@
-const { BN, ether } = require('@openzeppelin/test-helpers');
+const { BN, ether, time } = require('@openzeppelin/test-helpers');
 const { expect } = require('chai');
+const { bufferToHex } = require('ethereumjs-util');
+const ethSigUtil = require('eth-sig-util');
+const { ABIOrder, buildOrderData } = require('./helpers/orderUtils');
+const { cutLastArgUnaligned, assertThrowsAsync } = require('./helpers/utils');
 const { profileEVM } = require('./helpers/profileEVM');
-
 const TokenMock = artifacts.require('TokenMock');
+const LimitOrderProtocolMock = artifacts.require('LimitOrderProtocolMock');
 const FeeCollector = artifacts.require('FeeCollector');
 
 function toBN (num) {
@@ -46,7 +50,7 @@ async function getTokenBalance (feeCollector, token) {
     return totalSupply.sub(tokenSpent);
 }
 
-contract('FeeCollector', async function ([_, wallet, wallet2]) {
+contract('FeeCollector', async function ([currentUserAddress, wallet, wallet2]) {
     const name = 'FeeCollector: INCH';
     const symbol = 'fee-INCH';
 
@@ -56,14 +60,33 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
     const bn1e36 = toBN('1000000000000000000000000000000000000');
     const decelerationBN = toBN(deceleration);
 
+    function buildOrderWithSalt (exchange, salt, feeCollector, takerAsset, makerAmount, takerAmount, taker, predicate, permit, interaction, realToken) {
+        return {
+            salt: salt,
+            makerAsset: feeCollector.address,
+            takerAsset: takerAsset.address,
+            makerAssetData: feeCollector.contract.methods.func_00j71qF(feeCollector.address, taker, makerAmount, realToken.address).encodeABI(),
+            takerAssetData: takerAsset.contract.methods.transferFrom(taker, feeCollector.address, takerAmount).encodeABI(),
+            getMakerAmount: cutLastArgUnaligned(feeCollector.contract.methods.getMakerAmount(realToken.address, 0).encodeABI(),
+                (x) => exchange.contract.methods.arbitraryStaticCall(feeCollector.address, x).encodeABI()),
+            getTakerAmount: cutLastArgUnaligned(feeCollector.contract.methods.getTakerAmount(realToken.address, 0).encodeABI(),
+                (x) => exchange.contract.methods.arbitraryStaticCall(feeCollector.address, x).encodeABI()),
+            predicate: predicate,
+            permit: permit,
+            interaction: interaction,
+        };
+    }
+
     before(async function () {
     });
 
     beforeEach(async function () {
         this.weth = await TokenMock.new('WETH', 'WETH');
         this.token = await TokenMock.new('INCH', 'INCH');
+        this.swap = await LimitOrderProtocolMock.new();
+        this.chainId = await this.weth.getChainId();
 
-        this.feeCollector = await FeeCollector.new(this.token.address, minValue);
+        this.feeCollector = await FeeCollector.new(this.token.address, minValue, this.swap.address);
 
         await this.weth.mint(wallet, ether('1000000'));
         await this.weth.approve(this.feeCollector.address, ether('1000000'), { from: wallet });
@@ -72,22 +95,44 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
 
         await this.token.mint(wallet2, ether('1000000'));
         await this.token.approve(this.feeCollector.address, ether('1000000'), { from: wallet2 });
+        this.buildOrder = (exchange,
+            feeCollector,
+            takerAsset,
+            makerAmount,
+            takerAmount,
+            taker,
+            predicate = '0x',
+            permit = '0x',
+            interaction = this.weth.address,
+            realToken = this.weth) =>
+            buildOrderWithSalt(
+                exchange,
+                '1',
+                feeCollector,
+                takerAsset,
+                makerAmount,
+                takerAmount,
+                taker,
+                predicate,
+                permit,
+                interaction,
+                realToken);
     });
 
     describe('Gas measurements', async function () {
         it('should be cheap', async function () {
-            await this.feeCollector.contract.methods.valueForTime(0, this.weth.address).send({ from: _ });
-            await this.feeCollector.contract.methods.valueForTime(1000, this.weth.address).send({ from: _ });
-            await this.feeCollector.contract.methods.valueForTime(1000000, this.weth.address).send({ from: _ });
-            const receipt = await this.feeCollector.contract.methods.valueForTime(0xFFFFF, this.weth.address).send({ from: _ });
+            await this.feeCollector.contract.methods.valueForTime(0, this.weth.address).send({ from: currentUserAddress });
+            await this.feeCollector.contract.methods.valueForTime(1000, this.weth.address).send({ from: currentUserAddress });
+            await this.feeCollector.contract.methods.valueForTime(1000000, this.weth.address).send({ from: currentUserAddress });
+            const receipt = await this.feeCollector.contract.methods.valueForTime(0xFFFFF, this.weth.address).send({ from: currentUserAddress });
             if (process.env.npm_lifecycle_event !== 'coverage') {
                 expect(await profileEVM(receipt.transactionHash, 'SLOAD')).equal(1);
             }
 
-            // await this.feeCollector.contract.methods.valueForTimeSimple(0, this.weth.address).send({ from: _ });
-            // await this.feeCollector.contract.methods.valueForTimeSimple(1000, this.weth.address).send({ from: _ });
-            // await this.feeCollector.contract.methods.valueForTimeSimple(1000000, this.weth.address).send({ from: _ });
-            // const receipt2 = await this.feeCollector.contract.methods.valueForTimeSimple(0xFFFFF, this.weth.address).send({ from: _ });
+            // await this.feeCollector.contract.methods.valueForTimeSimple(0, this.weth.address).send({ from: currentUserAddress });
+            // await this.feeCollector.contract.methods.valueForTimeSimple(1000, this.weth.address).send({ from: currentUserAddress });
+            // await this.feeCollector.contract.methods.valueForTimeSimple(1000000, this.weth.address).send({ from: currentUserAddress });
+            // const receipt2 = await this.feeCollector.contract.methods.valueForTimeSimple(0xFFFFF, this.weth.address).send({ from: currentUserAddress });
             // if (process.env.npm_lifecycle_event !== 'coverage') {
             //     expect(await profileEVM(receipt2.transactionHash, 'SLOAD')).equal(1);
             // }
@@ -119,6 +164,193 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
             const result = await this.feeCollector.symbol.call();
             expect(result).equal(symbol);
         });
+    });
+
+    describe('LimitOrderProtocol', async function () {
+        it('isValidSignature/happy path', async function () {
+            const order = this.buildOrder(this.swap, this.feeCollector, this.token, 1, 1, this.feeCollector.address);
+            const data = buildOrderData(this.chainId, this.swap.address, order);
+            const orderHash = bufferToHex(ethSigUtil.TypedDataUtils.sign(data));
+            const signature = web3.eth.abi.encodeParameter(ABIOrder, order);
+            const result = await this.feeCollector.isValidSignature.call(orderHash, signature);
+
+            expect(result).equal('0x1626ba7e');
+        });
+
+        it('isValidSignature/hash', async function () {
+            const order = this.buildOrder(this.swap, this.feeCollector, this.token, 1, 1, this.feeCollector.address);
+            const data = buildOrderData(this.chainId + 1, this.swap.address, order);
+            const orderHash = bufferToHex(ethSigUtil.TypedDataUtils.sign(data));
+            const signature = web3.eth.abi.encodeParameter(ABIOrder, order);
+
+            await assertThrowsAsync(
+                () => this.feeCollector.isValidSignature.call(orderHash, signature),
+                (error) => expect(error.toString()).to.contain('invalid signature c1'),
+            );
+        });
+
+        it('isValidSignature/maker asset', async function () {
+            await assertInvalidSignatureThrows(
+                this,
+                (order) => {
+                    order.makerAsset = order.takerAsset;
+                },
+                'invalid signature c1');
+        });
+
+        it('isValidSignature/taker asset', async function () {
+            await assertInvalidSignatureThrows(
+                this,
+                (order) => {
+                    order.takerAsset = order.makerAsset;
+                },
+                'invalid signature c1');
+        });
+
+        it('isValidSignature/tokens destination', async function () {
+            await assertInvalidSignatureThrows(
+                this,
+                (order) => {
+                    order.takerAssetData = this.token.contract.methods.transferFrom(wallet, wallet2, 10).encodeABI();
+                },
+                'invalid signature c1');
+        });
+
+        it('isValidSignature/empty interaction', async function () {
+            await assertInvalidSignatureThrows(
+                this,
+                (order) => {
+                    order.interaction = '0x';
+                },
+                'invalid signature c1');
+        });
+
+        it('isValidSignature/invalid interaction', async function () {
+            await assertInvalidSignatureThrows(
+                this,
+                (order) => {
+                    order.interaction = order.makerAsset;
+                },
+                'invalid signature c2');
+        });
+
+        it('isValidSignature/getMakerAmount', async function () {
+            await assertInvalidSignatureThrows(
+                this,
+                (order) => {
+                    order.getMakerAmount = cutLastArgUnaligned(this.feeCollector.contract.methods.getMakerAmount(this.feeCollector.address, 0).encodeABI(),
+                        (x) => this.swap.contract.methods.arbitraryStaticCall(this.feeCollector.address, x).encodeABI());
+                },
+                'invalid signature c2');
+        });
+
+        it('isValidSignature/getTakerAmount', async function () {
+            await assertInvalidSignatureThrows(
+                this,
+                (order) => {
+                    order.getTakerAmount = cutLastArgUnaligned(this.feeCollector.contract.methods.getTakerAmount(this.feeCollector.address, 0).encodeABI(),
+                        (x) => this.swap.contract.methods.arbitraryStaticCall(this.feeCollector.address, x).encodeABI());
+                },
+                'invalid signature c2');
+        });
+
+        it('isValidSignature/makerAssetData', async function () {
+            await assertInvalidSignatureThrows(
+                this,
+                (order) => {
+                    order.makerAssetData = this.feeCollector.contract.methods.func_00j71qF(this.feeCollector.address, this.feeCollector.address, 10, this.feeCollector.address).encodeABI();
+                },
+                'invalid signature c2');
+        });
+
+        it('getMakerAmount/getTakerAmount', async function () {
+            const tokensCount = toBN('800000000000000000000000');
+            const reward = toBN(8);
+            await this.feeCollector.updateRewardNonLP(this.weth.address, wallet, reward, { from: wallet });
+
+            const tokenValue = await this.feeCollector.value(this.weth.address);
+            const makerAmount = await this.feeCollector.getMakerAmount(this.weth.address, tokensCount);
+            const takerAmount = await this.feeCollector.getTakerAmount(this.weth.address, makerAmount);
+            expect(makerAmount).to.be.bignumber.equal(reward.mul(tokensCount).div(tokenValue).toString());
+            expect(takerAmount).to.be.bignumber.equal(tokensCount);
+        });
+
+        it('notifyFillOrder', async function () {
+            // setup
+            const reward = toBN(100);
+            const fc = await FeeCollector.new(this.token.address, minValue, currentUserAddress);
+
+            await this.weth.mint(wallet, ether('1000000'));
+            await this.weth.approve(fc.address, ether('1000000'), { from: wallet });
+
+            await this.token.mint(fc.address, ether('1000'));
+
+            await this.token.mint(wallet2, ether('1000000'));
+            await this.token.approve(fc.address, ether('1000000'), { from: wallet2 });
+
+            await this.weth.updateReward(fc.address, wallet, reward, { from: wallet });
+
+            const wethCount = toBN(5);
+            const inchesCount = toBN(10);
+
+            // act
+            const balanceBeforeNotifyFill = (await fc.getEpochBalance(this.weth.address, 0));
+            await fc.notifyFillOrder(fc.address, this.token.address, wethCount, inchesCount, this.weth.address);
+            const balanceAfterNotifyFill = (await fc.getEpochBalance(this.weth.address, 0));
+
+            // assert
+            expect(balanceAfterNotifyFill.tokenSpent).to.be.bignumber.equal(balanceBeforeNotifyFill.tokenSpent.add(wethCount));
+            expect(balanceAfterNotifyFill.inchBalance).to.be.bignumber.equal(balanceBeforeNotifyFill.inchBalance.add(inchesCount));
+        });
+
+        it('integrational', async function () {
+            // setup
+            const reward = toBN(100);
+            await this.weth.mint(currentUserAddress, ether('10000000000000000000000000000'));
+            await this.weth.approve(this.swap.address, ether('10000000000000000000000000000'), { from: currentUserAddress });
+
+            await this.token.mint(this.feeCollector.address, ether('10000000000000000000000000000'));
+            await this.token.mint(currentUserAddress, ether('10000000000000000000000000000'));
+            await this.token.approve(this.swap.address, ether('10000000000000000000000000000'), { from: currentUserAddress });
+
+            await this.weth.updateReward(this.feeCollector.address, currentUserAddress, reward, { from: currentUserAddress });
+            await time.increaseTo((await time.latest()).addn(24 * 3600));
+
+            const wethCount = toBN('5');
+
+            const order = this.buildOrder(this.swap, this.feeCollector, this.token, toBN('1').shln(155), toBN('1').shln(155), currentUserAddress);
+            const signature = web3.eth.abi.encodeParameter(ABIOrder, order);
+
+            // act
+            const userBalanceBefore = await this.weth.balanceOf(currentUserAddress);
+            const fcBalanceBefore = await this.weth.balanceOf(this.feeCollector.address);
+            const userTokenBalanceBefore = await this.token.balanceOf(currentUserAddress);
+            const fcTokenBalanceBefore = await this.token.balanceOf(this.feeCollector.address);
+            await this.swap.fillOrder(order, signature, wethCount, 0, toBN('10000000000000000000000000000000000'));
+            const userBalanceAfter = await this.weth.balanceOf(currentUserAddress);
+            const fcBalanceAfter = await this.weth.balanceOf(this.feeCollector.address);
+            const userTokenBalanceAfter = await this.token.balanceOf(currentUserAddress);
+            const fcTokenBalanceAfter = await this.token.balanceOf(this.feeCollector.address);
+
+            // assert
+            expect(userBalanceAfter).to.be.bignumber.equal(userBalanceBefore.add(wethCount));
+            expect(fcBalanceAfter).to.be.bignumber.equal(fcBalanceBefore.sub(wethCount));
+            expect(userTokenBalanceAfter).to.be.bignumber.equal(userTokenBalanceBefore.sub(ether(wethCount))); // based on MIN_VALUE = 100e18
+            expect(fcTokenBalanceAfter).to.be.bignumber.equal(fcTokenBalanceBefore.add(ether(wethCount)));
+        });
+
+        async function assertInvalidSignatureThrows (self, orderUpdateFunc, expectedErrorMessage) {
+            const order = self.buildOrder(self.swap, self.feeCollector, self.token, 1, 1, self.feeCollector.address);
+            orderUpdateFunc(order);
+            const data = buildOrderData(self.chainId, self.swap.address, order);
+            const orderHash = bufferToHex(ethSigUtil.TypedDataUtils.sign(data));
+            const signature = web3.eth.abi.encodeParameter(ABIOrder, order);
+
+            await assertThrowsAsync(
+                () => self.feeCollector.isValidSignature.call(orderHash, signature),
+                (error) => expect(error.toString()).to.contain(expectedErrorMessage),
+            );
+        }
     });
 
     describe('valueForTime', async function () {

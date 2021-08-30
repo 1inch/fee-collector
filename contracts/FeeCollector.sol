@@ -2,14 +2,33 @@
 
 pragma solidity ^0.8.0;
 
+import "@openzeppelin/contracts/interfaces/IERC1271.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import "./helpers/EIP712Alien.sol";
+import "./helpers/ImmutableOwner.sol";
+import "./libraries/ArgumentsDecoder.sol";
 import "./utils/BalanceAccounting.sol";
+import "./libraries/Types.sol";
 
-
-contract FeeCollector is BalanceAccounting {
+contract FeeCollector is
+    BalanceAccounting,
+    IERC1271,
+    ImmutableOwner,
+    EIP712Alien
+{
     using SafeERC20 for IERC20;
+    using ArgumentsDecoder for bytes;
+
+    bytes32 constant private _LIMIT_ORDER_TYPEHASH = keccak256(
+        "Order(uint256 salt,address makerAsset,address takerAsset,bytes makerAssetData,bytes takerAssetData,bytes getMakerAmount,bytes getTakerAmount,bytes predicate,bytes permit,bytes interaction)"
+    );
+
+    uint256 constant private _FROM_INDEX = 0;
+    uint256 constant private _TO_INDEX = 1;
+    uint256 constant private _AMOUNT_INDEX = 2;
+    uint256 constant private _ASSET_INDEX = 3;
 
     struct EpochBalance {
         mapping(address => uint256) balances;
@@ -36,8 +55,9 @@ contract FeeCollector is BalanceAccounting {
 
     constructor(
         IERC20 _token,
-        uint256 _minValue
-    ) {
+        uint256 _minValue,
+        address _limitOrderProtocol
+    ) ImmutableOwner(_limitOrderProtocol) EIP712Alien(_limitOrderProtocol, "1inch Limit Order Protocol", "1") {
         token = _token;
         minValue = _minValue;
         decimals = IERC20Metadata(address(_token)).decimals();
@@ -276,7 +296,68 @@ contract FeeCollector is BalanceAccounting {
         _updateReward(erc20, referral, amount);
     }
 
+    function getMakerAmount(IERC20 erc20, uint256 swapTakerAmount) external view returns(uint256) {
+        return swapTakerAmount * _getTokenBalance(erc20) / value(erc20);
+    }
+
+    function getTakerAmount(IERC20 erc20, uint256 swapMakerAmount) external view returns(uint256) {
+        return swapMakerAmount * value(erc20) / _getTokenBalance(erc20);
+    }
+
+    // solhint-disable-next-line func-name-mixedcase
+    function func_00j71qF(address from, address to, uint256 amount, IERC20 erc20) external onlyImmutableOwner {
+        require(from == address(this), "FC: invalid tokens source");
+        erc20.transfer(to, amount);
+    }
+
+    function isValidSignature(bytes32 hash, bytes memory signature) public view override returns(bytes4) {
+        Types.Order memory order = abi.decode(signature, (Types.Order));
+        require(
+            _hash(order) == hash &&
+            order.makerAsset == address(this) &&
+            order.takerAsset == address(token) &&
+            order.takerAssetData.decodeAddress(_TO_INDEX) == address(this) &&
+            order.interaction.length > 0,
+            "FC: invalid signature c1"
+        );
+
+        bytes memory getMakerAmountFunc = order.getMakerAmount.decodeBytes(1);
+        bytes memory getTakerAmountFunc = order.getTakerAmount.decodeBytes(1);
+        address userAsset = _decodeAddress(order.interaction);
+        require(
+            getMakerAmountFunc.decodeAddress(0) == userAsset &&
+            getTakerAmountFunc.decodeAddress(0) == userAsset &&
+            order.makerAssetData.decodeAddress(3) == userAsset,
+            "FC: invalid signature c2"
+        );
+
+        return this.isValidSignature.selector;
+    }
+
+    function _decodeAddress(bytes memory data) private pure returns(address result) {
+        assembly { // solhint-disable-line no-inline-assembly
+            result := and(mload(add(data, 0x14)), 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)
+        }
+    }
+
+    function notifyFillOrder(IERC20 makerAsset, IERC20 takerAsset, uint256 makingAmount, uint256 takingAmount, bytes calldata interaction) public onlyImmutableOwner {
+        require(address(makerAsset) == address(this), "Invalid maker asset");
+        require(takerAsset == token, "Invalid taker asset");
+        address userAsset = _decodeAddress(interaction);
+        _exchangeBalances(IERC20(userAsset), takingAmount, makingAmount);
+    }
+
     function trade(IERC20 erc20, uint256 amount) external {
+        uint256 tokenBalance = _getTokenBalance(erc20);
+        uint256 _price = value(erc20);
+        uint256 returnAmount = amount * tokenBalance / _price;
+        _exchangeBalances(erc20, amount, returnAmount);
+
+        token.safeTransferFrom(msg.sender, address(this), amount);
+        erc20.safeTransfer(msg.sender, returnAmount);
+    }
+
+    function _exchangeBalances(IERC20 erc20, uint256 amount, uint256 returnAmount) private {
         TokenInfo storage _token = tokenInfo[erc20];
         uint256 currentEpoch = _token.currentEpoch;
         uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
@@ -287,12 +368,7 @@ contract FeeCollector is BalanceAccounting {
 
         uint256 unprocessedTotalSupply = epochBalance.totalSupply;
         uint256 unprocessedTokenBalance = unprocessedTotalSupply - epochBalance.tokenSpent;
-        uint256 tokenBalance = unprocessedTokenBalance;
-        if (firstUnprocessedEpoch != currentEpoch) {
-            tokenBalance += currentEpochBalance.totalSupply - currentEpochBalance.tokenSpent;
-        }
-
-        uint256 returnAmount = amount * tokenBalance / value(erc20);
+        uint256 tokenBalance = _getTokenBalanceRaw(_token, currentEpoch, firstUnprocessedEpoch);
         require(tokenBalance >= returnAmount, "not enough tokens");
 
         if (firstUnprocessedEpoch == currentEpoch) {
@@ -324,9 +400,20 @@ contract FeeCollector is BalanceAccounting {
         if (currentEpoch != currentEpochStored) {
             _token.currentEpoch = currentEpoch;
         }
+    }
 
-        token.safeTransferFrom(msg.sender, address(this), amount);
-        erc20.safeTransfer(msg.sender, returnAmount);
+    function _getTokenBalance(IERC20 erc20) private view returns (uint256) {
+        TokenInfo storage _token = tokenInfo[erc20];
+        uint256 tokenCurrentEpoch = _token.currentEpoch;
+        uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
+        return _getTokenBalanceRaw(_token, tokenCurrentEpoch, firstUnprocessedEpoch);
+    }
+
+    function _getTokenBalanceRaw(TokenInfo storage _token, uint256 tokenCurrentEpoch, uint256 firstUnprocessedEpoch) private view returns (uint256 tokenBalance) {
+        tokenBalance = _token.epochBalance[firstUnprocessedEpoch].totalSupply - _token.epochBalance[firstUnprocessedEpoch].tokenSpent;
+        if (firstUnprocessedEpoch != tokenCurrentEpoch) {
+            tokenBalance += (_token.epochBalance[tokenCurrentEpoch].totalSupply - _token.epochBalance[tokenCurrentEpoch].tokenSpent);
+        }
     }
 
     function claim(IERC20[] memory pools) external {
@@ -379,6 +466,7 @@ contract FeeCollector is BalanceAccounting {
     }
 
     function _updateReward(IERC20 erc20, address referral, uint256 amount) private {
+
         TokenInfo storage _token = tokenInfo[erc20];
         uint256 currentEpoch = _token.currentEpoch;
         uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
@@ -388,7 +476,6 @@ contract FeeCollector is BalanceAccounting {
         // Add new reward to current epoch
         _token.epochBalance[currentEpoch].balances[referral] += amount;
         _token.epochBalance[currentEpoch].totalSupply += amount;
-
         // Collect all processed epochs and advance user token epoch
         _collectProcessedEpochs(referral, _token, currentEpoch, firstUnprocessedEpoch);
     }
@@ -457,5 +544,25 @@ contract FeeCollector is BalanceAccounting {
             _token.epochBalance[epoch].totalSupply = totalSupply - share;
             _token.epochBalance[epoch].inchBalance = inchBalance - collected;
         }
+    }
+
+    function _hash(Types.Order memory order) internal view returns(bytes32) {
+        return _hashTypedDataV4(
+            keccak256(
+                abi.encode(
+                    _LIMIT_ORDER_TYPEHASH,
+                    order.salt,
+                    order.makerAsset,
+                    order.takerAsset,
+                    keccak256(order.makerAssetData),
+                    keccak256(order.takerAssetData),
+                    keccak256(order.getMakerAmount),
+                    keccak256(order.getTakerAmount),
+                    keccak256(order.predicate),
+                    keccak256(order.permit),
+                    keccak256(order.interaction)
+                )
+            )
+        );
     }
 }
