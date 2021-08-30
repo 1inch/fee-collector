@@ -29,7 +29,6 @@ contract FeeCollector is
     uint256 constant private _TO_INDEX = 1;
     uint256 constant private _AMOUNT_INDEX = 2;
     uint256 constant private _ASSET_INDEX = 3;
-    uint256 constant private _FIXED_POINT_MULTIPLIER = 1e36;
 
     struct EpochBalance {
         mapping(address => uint256) balances;
