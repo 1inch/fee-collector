@@ -272,8 +272,8 @@ contract FeeCollector is BalanceAccounting {
     }
 
     function updateRewardNonLP(IERC20 erc20, address referral, uint256 amount) external {
-        erc20.safeTransferFrom(msg.sender, address(this), amount);
         _updateReward(erc20, referral, amount);
+        erc20.safeTransferFrom(msg.sender, address(this), amount);
     }
 
     function trade(IERC20 erc20, uint256 amount) external {
