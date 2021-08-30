@@ -431,7 +431,7 @@ contract FeeCollector is BalanceAccounting {
             return;
         }
 
-        uint256 epochCount = Math.min(2, tokenEpoch - userEpoch); // 0, 1 or 2 epochs
+        uint256 epochCount = Math.min(2, tokenEpoch - userEpoch); // 1 or 2 epochs
 
         // Claim 1 or 2 processed epochs for the user
         uint256 collected = _collectEpoch(user, _token, userEpoch);
