@@ -15,8 +15,8 @@ contract FeeCollector is IFeeCollector, BalanceAccounting {
     struct EpochBalance {
         mapping(address => uint256) balances;
         uint256 totalSupply;
-        uint256 tokenSpent;
-        uint256 inchBalance;
+        uint256 traded;
+        uint256 tokenBalance;
     }
 
     struct TokenInfo {
@@ -52,9 +52,9 @@ contract FeeCollector is IFeeCollector, BalanceAccounting {
         return string(abi.encodePacked("fee-", IERC20Metadata(address(token)).symbol()));
     }
 
-    function getEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256 totalSupply, uint256 tokenSpent, uint256 inchBalance) {
+    function getEpochBalance(IERC20 _token, uint256 epoch) external view returns(uint256 totalSupply, uint256 traded, uint256 tokenBalance) {
         EpochBalance storage epochBalance = tokenInfo[_token].epochBalance[epoch];
-        (totalSupply, tokenSpent, inchBalance) = (epochBalance.totalSupply, epochBalance.tokenSpent, epochBalance.inchBalance);
+        (totalSupply, traded, tokenBalance) = (epochBalance.totalSupply, epochBalance.traded, epochBalance.tokenBalance);
     }
 
     function getUserEpochBalance(IERC20 _token, uint256 epoch, address user) external view returns(uint256 balance) {
@@ -287,7 +287,7 @@ contract FeeCollector is IFeeCollector, BalanceAccounting {
         uint256 currentEpochStored = currentEpoch;
 
         uint256 unprocessedTotalSupply = epochBalance.totalSupply;
-        uint256 unprocessedTokenBalance = unprocessedTotalSupply - epochBalance.tokenSpent;
+        uint256 unprocessedTokenBalance = unprocessedTotalSupply - epochBalance.traded;
         uint256 tokenBalance = unprocessedTokenBalance;
         if (firstUnprocessedEpoch != currentEpoch) {
             tokenBalance += currentEpochBalance.totalSupply;
@@ -308,16 +308,16 @@ contract FeeCollector is IFeeCollector, BalanceAccounting {
                 _token.firstUnprocessedEpoch += 1;
             }
 
-            epochBalance.tokenSpent += returnAmount;
-            epochBalance.inchBalance += amount;
+            epochBalance.traded += returnAmount;
+            epochBalance.tokenBalance += amount;
         } else {
             uint256 amountPart = unprocessedTokenBalance * amount / returnAmount;
 
-            epochBalance.tokenSpent = unprocessedTotalSupply;
-            epochBalance.inchBalance += amountPart;
+            epochBalance.traded = unprocessedTotalSupply;
+            epochBalance.tokenBalance += amountPart;
 
-            currentEpochBalance.tokenSpent += returnAmount - unprocessedTokenBalance;
-            currentEpochBalance.inchBalance += amount - amountPart;
+            currentEpochBalance.traded += returnAmount - unprocessedTokenBalance;
+            currentEpochBalance.tokenBalance += amount - amountPart;
 
             _token.firstUnprocessedEpoch += 1;
             currentEpoch += 1;
@@ -375,8 +375,8 @@ contract FeeCollector is IFeeCollector, BalanceAccounting {
             uint256 totalSupply = epochBalance.totalSupply;
             epochBalance.balances[msg.sender] = 0;
             epochBalance.totalSupply = totalSupply - share;
-            epochBalance.inchBalance -= _transferTokenShare(token, epochBalance.inchBalance, share, totalSupply);
-            _transferTokenShare(erc20, totalSupply - epochBalance.tokenSpent, share, totalSupply);
+            epochBalance.tokenBalance -= _transferTokenShare(token, epochBalance.tokenBalance, share, totalSupply);
+            _transferTokenShare(erc20, totalSupply - epochBalance.traded, share, totalSupply);
         }
     }
 
@@ -398,7 +398,7 @@ contract FeeCollector is IFeeCollector, BalanceAccounting {
     function _updateTokenState(IERC20 erc20, int256 amount, uint256 currentEpoch, uint256 firstUnprocessedEpoch) private {
         TokenInfo storage _token = tokenInfo[erc20];
 
-        uint256 fee = _token.epochBalance[firstUnprocessedEpoch].totalSupply - _token.epochBalance[firstUnprocessedEpoch].tokenSpent;
+        uint256 fee = _token.epochBalance[firstUnprocessedEpoch].totalSupply - _token.epochBalance[firstUnprocessedEpoch].traded;
         if (firstUnprocessedEpoch != currentEpoch) {
             fee += _token.epochBalance[currentEpoch].totalSupply;
         }
@@ -450,14 +450,14 @@ contract FeeCollector is IFeeCollector, BalanceAccounting {
     function _collectEpoch(address user, TokenInfo storage _token, uint256 epoch) private returns(uint256 collected) {
         uint256 share = _token.epochBalance[epoch].balances[user];
         if (share > 0) {
-            uint256 inchBalance = _token.epochBalance[epoch].inchBalance;
+            uint256 tokenBalance = _token.epochBalance[epoch].tokenBalance;
             uint256 totalSupply = _token.epochBalance[epoch].totalSupply;
 
-            collected = inchBalance * share / totalSupply;
+            collected = tokenBalance * share / totalSupply;
 
             _token.epochBalance[epoch].balances[user] = 0;
             _token.epochBalance[epoch].totalSupply = totalSupply - share;
-            _token.epochBalance[epoch].inchBalance = inchBalance - collected;
+            _token.epochBalance[epoch].tokenBalance = tokenBalance - collected;
         }
     }
 }
