@@ -374,7 +374,7 @@ contract FeeCollector is BalanceAccounting {
             epochBalance.balances[msg.sender] = 0;
             epochBalance.totalSupply = totalSupply - share;
             epochBalance.inchBalance -= _transferTokenShare(token, epochBalance.inchBalance, share, totalSupply);
-            _transferTokenShare(erc20, epochBalance.tokenSpent, share, totalSupply);
+            _transferTokenShare(erc20, totalSupply - epochBalance.tokenSpent, share, totalSupply);
         }
     }
 

@@ -850,7 +850,7 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
 
             const value2 = await this.feeCollector.value.call(this.weth.address);
             const tokenBalance2 = await getTokenBalance(this.feeCollector, this.weth.address);
-            const returnAmount2 = reward.divn(2);
+            const returnAmount2 = reward.divn(3);
             const amount2 = value2.mul(returnAmount2).div(tokenBalance2);
 
             await this.feeCollector.trade(this.weth.address, amount2, { from: wallet2 });
@@ -862,7 +862,7 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
             const firstUnprocessedEpoch = tokenInfo.firstUnprocessedEpoch;
 
             tokenInfo = await getTokenInfo(this.feeCollector, this.weth.address, wallet2, firstUnprocessedEpoch);
-            const tokenInfoTokenBalance = tokenInfo.epochBalance.tokenSpent;
+            const tokenInfoTokenBalance = tokenInfo.epochBalance.totalSupply.sub(tokenInfo.epochBalance.tokenSpent);
             const tokenInfoInchBalance = tokenInfo.epochBalance.inchBalance;
 
             await this.feeCollector.claimFrozenEpoch(this.weth.address, { from: wallet2 });
@@ -876,7 +876,7 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
             tokenInfo = await getTokenInfo(this.feeCollector, this.weth.address, wallet2, firstUnprocessedEpoch);
             expect(tokenInfo.epochBalance.userBalance).to.be.bignumber.equal('0');
             expect(tokenInfo.epochBalance.totalSupply).to.be.bignumber.equal('0');
-            expect(tokenInfo.epochBalance.tokenSpent).to.be.bignumber.equal(reward.divn(2));
+            expect(tokenInfo.epochBalance.tokenSpent).to.be.bignumber.equal(reward.divn(3));
             expect(tokenInfo.epochBalance.inchBalance).to.be.bignumber.equal('0');
         });
     });
