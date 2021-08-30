@@ -16,7 +16,8 @@ contract FeeCollector is
     BalanceAccounting,
     IERC1271,
     ImmutableOwner,
-    EIP712Alien {
+    EIP712Alien
+{
     using SafeERC20 for IERC20;
     using ArgumentsDecoder for bytes;
 
@@ -46,27 +47,6 @@ contract FeeCollector is
         mapping(address => uint256) firstUserUnprocessedEpoch;
     }
 
-    uint256 private immutable _k00;
-    uint256 private immutable _k01;
-    uint256 private immutable _k02;
-    uint256 private immutable _k03;
-    uint256 private immutable _k04;
-    uint256 private immutable _k05;
-    uint256 private immutable _k06;
-    uint256 private immutable _k07;
-    uint256 private immutable _k08;
-    uint256 private immutable _k09;
-    uint256 private immutable _k10;
-    uint256 private immutable _k11;
-    uint256 private immutable _k12;
-    uint256 private immutable _k13;
-    uint256 private immutable _k14;
-    uint256 private immutable _k15;
-    uint256 private immutable _k16;
-    uint256 private immutable _k17;
-    uint256 private immutable _k18;
-    uint256 private immutable _k19;
-
     uint256 private constant _MAX_TIME = 0xfffff;
 
     mapping(IERC20 => TokenInfo) public tokenInfo;
@@ -77,36 +57,11 @@ contract FeeCollector is
     constructor(
         IERC20 _token,
         uint256 _minValue,
-        uint256 _deceleration,
         address _limitOrderProtocol
     ) ImmutableOwner(_limitOrderProtocol) EIP712Alien(_limitOrderProtocol, "1inch Limit Order Protocol", "1") {
-        require(_deceleration > 0 && _deceleration < _FIXED_POINT_MULTIPLIER, "Invalid deceleration");
         token = _token;
         minValue = _minValue;
         decimals = IERC20Metadata(address(_token)).decimals();
-
-        uint256 z;
-        _k00 = z = _deceleration;
-        _k01 = z = z * z / _FIXED_POINT_MULTIPLIER;
-        _k02 = z = z * z / _FIXED_POINT_MULTIPLIER;
-        _k03 = z = z * z / _FIXED_POINT_MULTIPLIER;
-        _k04 = z = z * z / _FIXED_POINT_MULTIPLIER;
-        _k05 = z = z * z / _FIXED_POINT_MULTIPLIER;
-        _k06 = z = z * z / _FIXED_POINT_MULTIPLIER;
-        _k07 = z = z * z / _FIXED_POINT_MULTIPLIER;
-        _k08 = z = z * z / _FIXED_POINT_MULTIPLIER;
-        _k09 = z = z * z / _FIXED_POINT_MULTIPLIER;
-        _k10 = z = z * z / _FIXED_POINT_MULTIPLIER;
-        _k11 = z = z * z / _FIXED_POINT_MULTIPLIER;
-        _k12 = z = z * z / _FIXED_POINT_MULTIPLIER;
-        _k13 = z = z * z / _FIXED_POINT_MULTIPLIER;
-        _k14 = z = z * z / _FIXED_POINT_MULTIPLIER;
-        _k15 = z = z * z / _FIXED_POINT_MULTIPLIER;
-        _k16 = z = z * z / _FIXED_POINT_MULTIPLIER;
-        _k17 = z = z * z / _FIXED_POINT_MULTIPLIER;
-        _k18 = z = z * z / _FIXED_POINT_MULTIPLIER;
-        _k19 = z = z * z / _FIXED_POINT_MULTIPLIER;
-        require(z * z < _FIXED_POINT_MULTIPLIER, "Deceleration is too slow");
     }
 
     function name() external view returns(string memory) {
@@ -130,32 +85,15 @@ contract FeeCollector is
         firstUserUnprocessedEpoch = tokenInfo[_token].firstUserUnprocessedEpoch[user];
     }
 
-    function decelerationTable() public view returns(uint256[20] memory) {
-        return [
-            _k00, _k01, _k02, _k03, _k04,
-            _k05, _k06, _k07, _k08, _k09,
-            _k10, _k11, _k12, _k13, _k14,
-            _k15, _k16, _k17, _k18, _k19
-        ];
+    function decelerationTable() external pure returns(uint256[20] memory ret) {
+        ret[0] = 0.9999e36;
+        for (uint256 i = 1; i < 20; ++i) {
+            ret[i] = ret[i-1] * ret[i-1] / 1e36;
+        }
     }
 
     function value(IERC20 _token) public view returns(uint256 result) {
         return valueForTime(block.timestamp, _token);
-    }
-
-    function valueForTimeSimple(uint256 time, IERC20 _token) public view returns(uint256 result) {
-        uint256[20] memory table = decelerationTable();
-        uint256 lastTime = tokenInfo[_token].lastTime;
-        uint256 lastValue = tokenInfo[_token].lastValue;
-        uint256 secs = Math.min(time - lastTime, _MAX_TIME);
-        result = Math.max(lastValue, minValue);
-        for (uint i = 0; secs > 0 && i < table.length; i++) {
-            if (secs & 1 != 0) {
-                result = result * table[i] / _FIXED_POINT_MULTIPLIER;
-            }
-            if (result < minValue) return minValue;
-            secs >>= 1;
-        }
     }
 
     function valueForTime(uint256 time, IERC20 _token) public view returns(uint256 result) {
@@ -524,6 +462,7 @@ contract FeeCollector is
             epochBalance.balances[msg.sender] = 0;
             epochBalance.totalSupply = totalSupply - share;
             epochBalance.inchBalance -= _transferTokenShare(token, epochBalance.inchBalance, share, totalSupply);
+            _transferTokenShare(erc20, epochBalance.tokenSpent, share, totalSupply);
         }
     }
 

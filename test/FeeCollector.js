@@ -86,7 +86,7 @@ contract('FeeCollector', async function ([currentUserAddress, wallet, wallet2]) 
         this.swap = await LimitOrderProtocolMock.new();
         this.chainId = await this.weth.getChainId();
 
-        this.feeCollector = await FeeCollector.new(this.token.address, minValue, deceleration, this.swap.address);
+        this.feeCollector = await FeeCollector.new(this.token.address, minValue, this.swap.address);
 
         await this.weth.mint(wallet, ether('1000000'));
         await this.weth.approve(this.feeCollector.address, ether('1000000'), { from: wallet });
@@ -129,13 +129,13 @@ contract('FeeCollector', async function ([currentUserAddress, wallet, wallet2]) 
                 expect(await profileEVM(receipt.transactionHash, 'SLOAD')).equal(1);
             }
 
-            await this.feeCollector.contract.methods.valueForTimeSimple(0, this.weth.address).send({ from: currentUserAddress });
-            await this.feeCollector.contract.methods.valueForTimeSimple(1000, this.weth.address).send({ from: currentUserAddress });
-            await this.feeCollector.contract.methods.valueForTimeSimple(1000000, this.weth.address).send({ from: currentUserAddress });
-            const receipt2 = await this.feeCollector.contract.methods.valueForTimeSimple(0xFFFFF, this.weth.address).send({ from: currentUserAddress });
-            if (process.env.npm_lifecycle_event !== 'coverage') {
-                expect(await profileEVM(receipt2.transactionHash, 'SLOAD')).equal(1);
-            }
+            // await this.feeCollector.contract.methods.valueForTimeSimple(0, this.weth.address).send({ from: currentUserAddress });
+            // await this.feeCollector.contract.methods.valueForTimeSimple(1000, this.weth.address).send({ from: currentUserAddress });
+            // await this.feeCollector.contract.methods.valueForTimeSimple(1000000, this.weth.address).send({ from: currentUserAddress });
+            // const receipt2 = await this.feeCollector.contract.methods.valueForTimeSimple(0xFFFFF, this.weth.address).send({ from: currentUserAddress });
+            // if (process.env.npm_lifecycle_event !== 'coverage') {
+            //     expect(await profileEVM(receipt2.transactionHash, 'SLOAD')).equal(1);
+            // }
         });
     });
 
@@ -278,7 +278,7 @@ contract('FeeCollector', async function ([currentUserAddress, wallet, wallet2]) 
         it('notifyFillOrder', async function () {
             // setup
             const reward = toBN(100);
-            const fc = await FeeCollector.new(this.token.address, minValue, deceleration, currentUserAddress);
+            const fc = await FeeCollector.new(this.token.address, minValue, currentUserAddress);
 
             await this.weth.mint(wallet, ether('1000000'));
             await this.weth.approve(fc.address, ether('1000000'), { from: wallet });
@@ -1094,6 +1094,7 @@ contract('FeeCollector', async function ([currentUserAddress, wallet, wallet2]) 
             const firstUnprocessedEpoch = tokenInfo.firstUnprocessedEpoch;
 
             tokenInfo = await getTokenInfo(this.feeCollector, this.weth.address, wallet2, firstUnprocessedEpoch);
+            const tokenInfoTokenBalance = tokenInfo.epochBalance.tokenSpent;
             const tokenInfoInchBalance = tokenInfo.epochBalance.inchBalance;
 
             await this.feeCollector.claimFrozenEpoch(this.weth.address, { from: wallet2 });
@@ -1101,7 +1102,7 @@ contract('FeeCollector', async function ([currentUserAddress, wallet, wallet2]) 
             const balanceWeth2 = await this.weth.balanceOf.call(wallet2);
             const balanceToken2 = await this.token.balanceOf.call(wallet2);
 
-            expect(balanceWeth2).to.be.bignumber.equal(balanceWeth1);
+            expect(balanceWeth2).to.be.bignumber.equal(balanceWeth1.add(tokenInfoTokenBalance));
             expect(balanceToken2).to.be.bignumber.equal(balanceToken1.add(tokenInfoInchBalance));
 
             tokenInfo = await getTokenInfo(this.feeCollector, this.weth.address, wallet2, firstUnprocessedEpoch);
