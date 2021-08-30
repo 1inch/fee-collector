@@ -268,12 +268,12 @@ contract FeeCollector is IFeeCollector, BalanceAccounting {
         }
     }
 
-    function updateReward(address referral, uint256 amount) external override {
-        _updateReward(IERC20(msg.sender), referral, amount);
+    function updateReward(address receiver, uint256 amount) external override {
+        _updateReward(IERC20(msg.sender), receiver, amount);
     }
 
-    function updateRewardNonLP(IERC20 erc20, address referral, uint256 amount) external override {
-        _updateReward(erc20, referral, amount);
+    function updateRewardNonLP(IERC20 erc20, address receiver, uint256 amount) external override {
+        _updateReward(erc20, receiver, amount);
         erc20.safeTransferFrom(msg.sender, address(this), amount);
     }
 
@@ -339,7 +339,7 @@ contract FeeCollector is IFeeCollector, BalanceAccounting {
 
         uint256 userBalance = balanceOf(msg.sender);
         if (userBalance > 1) {
-            // Avoid erasing storage to decrease gas footprint for referral payments
+            // Avoid erasing storage to decrease gas footprint for payments
             unchecked {
                 uint256 withdrawn = userBalance - 1;
                 _burn(msg.sender, withdrawn);
@@ -380,7 +380,7 @@ contract FeeCollector is IFeeCollector, BalanceAccounting {
         }
     }
 
-    function _updateReward(IERC20 erc20, address referral, uint256 amount) private {
+    function _updateReward(IERC20 erc20, address receiver, uint256 amount) private {
         TokenInfo storage _token = tokenInfo[erc20];
         uint256 currentEpoch = _token.currentEpoch;
         uint256 firstUnprocessedEpoch = _token.firstUnprocessedEpoch;
@@ -388,11 +388,11 @@ contract FeeCollector is IFeeCollector, BalanceAccounting {
         _updateTokenState(erc20, int256(amount), currentEpoch, firstUnprocessedEpoch);
 
         // Add new reward to current epoch
-        _token.epochBalance[currentEpoch].balances[referral] += amount;
+        _token.epochBalance[currentEpoch].balances[receiver] += amount;
         _token.epochBalance[currentEpoch].totalSupply += amount;
 
         // Collect all processed epochs and advance user token epoch
-        _collectProcessedEpochs(referral, _token, currentEpoch, firstUnprocessedEpoch);
+        _collectProcessedEpochs(receiver, _token, currentEpoch, firstUnprocessedEpoch);
     }
 
     function _updateTokenState(IERC20 erc20, int256 amount, uint256 currentEpoch, uint256 firstUnprocessedEpoch) private {
