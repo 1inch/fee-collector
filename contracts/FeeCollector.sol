@@ -12,6 +12,11 @@ import "./utils/BalanceAccounting.sol";
 contract FeeCollector is IFeeCollector, BalanceAccounting {
     using SafeERC20 for IERC20;
 
+    event Trade(address indexed token, address indexed trader, uint256 amount, uint256 boughtAmount);
+    event UpdateReward(address indexed token, address indexed receiver, uint256 amount);
+    event ClaimFrozen(address indexed token, address indexed receiver, uint256 tokenAmount, uint256 swappedTokenAmount);
+    event ClaimCurrent(address indexed receiver, uint256 amount);
+
     struct EpochBalance {
         mapping(address => uint256) balances;
         uint256 totalSupply;
@@ -329,6 +334,7 @@ contract FeeCollector is IFeeCollector, BalanceAccounting {
 
         token.safeTransferFrom(msg.sender, address(this), amount);
         erc20.safeTransfer(msg.sender, returnAmount);
+        emit Trade(address(erc20), msg.sender, amount, returnAmount);
     }
 
     function claim(IERC20[] memory pools) external {
@@ -356,6 +362,7 @@ contract FeeCollector is IFeeCollector, BalanceAccounting {
             _epochBalance.balances[msg.sender] = 0;
             _epochBalance.totalSupply -= userBalance;
             erc20.safeTransfer(msg.sender, userBalance);
+            emit ClaimCurrent(msg.sender, userBalance);
         }
     }
 
@@ -375,8 +382,10 @@ contract FeeCollector is IFeeCollector, BalanceAccounting {
             uint256 totalSupply = epochBalance.totalSupply;
             epochBalance.balances[msg.sender] = 0;
             epochBalance.totalSupply = totalSupply - share;
-            epochBalance.tokenBalance -= _transferTokenShare(token, epochBalance.tokenBalance, share, totalSupply);
-            _transferTokenShare(erc20, totalSupply - epochBalance.traded, share, totalSupply);
+            uint256 withdrawnERC20 = _transferTokenShare(erc20, totalSupply - epochBalance.traded, share, totalSupply);
+            uint256 withdrawnToken = _transferTokenShare(token, epochBalance.tokenBalance, share, totalSupply);
+            epochBalance.tokenBalance -= withdrawnToken;
+            emit ClaimFrozen(address(erc20), msg.sender, withdrawnERC20, withdrawnToken);
         }
     }
 
@@ -393,6 +402,7 @@ contract FeeCollector is IFeeCollector, BalanceAccounting {
 
         // Collect all processed epochs and advance user token epoch
         _collectProcessedEpochs(receiver, _token, currentEpoch, firstUnprocessedEpoch);
+        emit UpdateReward(address(erc20), receiver, amount);
     }
 
     function _updateTokenState(IERC20 erc20, int256 amount, uint256 currentEpoch, uint256 firstUnprocessedEpoch) private {
