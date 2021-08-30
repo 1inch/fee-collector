@@ -1,3 +1,4 @@
+require('@nomiclabs/hardhat-ethers');
 require('@nomiclabs/hardhat-truffle5');
 require('solidity-coverage');
 require('hardhat-deploy');
