@@ -348,11 +348,11 @@ contract FeeCollector is BalanceAccounting {
 
     function claimCurrentEpoch(IERC20 erc20) external {
         TokenInfo storage _token = tokenInfo[erc20];
-        uint256 currentEpoch = _token.currentEpoch;
-        uint256 userBalance = _token.epochBalance[currentEpoch].balances[msg.sender];
+        EpochBalance storage _epochBalance = _token.epochBalance[_token.currentEpoch];
+        uint256 userBalance = _epochBalance.balances[msg.sender];
         if (userBalance > 0) {
-            _token.epochBalance[currentEpoch].balances[msg.sender] = 0;
-            _token.epochBalance[currentEpoch].totalSupply -= userBalance;
+            _epochBalance.balances[msg.sender] = 0;
+            _epochBalance.totalSupply -= userBalance;
             erc20.safeTransfer(msg.sender, userBalance);
         }
     }
