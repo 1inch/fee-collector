@@ -11,6 +11,7 @@
     "@openzeppelin/contracts": "^4.3.1"
   },
   "devDependencies": {
+    "@metamask/eth-sig-util": "^4.0.1",
     "@nomiclabs/hardhat-ethers": "^2.0.2",
     "@nomiclabs/hardhat-etherscan": "^2.1.5",
     "@nomiclabs/hardhat-truffle5": "^2.0.0",
@@ -24,7 +25,6 @@
     "eslint-plugin-node": "^11.1.0",
     "eslint-plugin-promise": "^5.1.0",
     "eslint-plugin-standard": "^5.0.0",
-    "eth-sig-util": "^3.0.1",
     "ethereumjs-util": "^7.1.0",
     "ethereumjs-wallet": "^1.0.1",
     "hardhat": "^2.6.1",
@@ -32,8 +32,8 @@
     "hardhat-gas-reporter": "^1.0.4",
     "rimraf": "^3.0.2",
     "solc": "^0.8.7-fixed",
-    "solidity-coverage": "^0.7.17",
-    "solhint": "^3.3.6"
+    "solhint": "^3.3.6",
+    "solidity-coverage": "^0.7.17"
   },
   "scripts": {
     "clean": "rimraf artifacts cache coverage coverage.json",
