@@ -1,13 +1,9 @@
-const { BN, ether } = require('@openzeppelin/test-helpers');
 const { expect } = require('chai');
-const { profileEVM } = require('./helpers/profileEVM');
+const { ether, profileEVM, toBN } = require('@1inch/solidity-utils');
 
 const TokenMock = artifacts.require('TokenMock');
+const TokenWithUpdateRewardMock = artifacts.require('TokenWithUpdateRewardMock');
 const FeeCollector = artifacts.require('FeeCollector');
-
-function toBN (num) {
-    return new BN(num);
-}
 
 async function getTokenInfo (feeCollector, token, user, epoch) {
     const tokenInfo = await feeCollector.tokenInfo.call(token);
@@ -60,7 +56,7 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
     });
 
     beforeEach(async function () {
-        this.weth = await TokenMock.new('WETH', 'WETH');
+        this.weth = await TokenWithUpdateRewardMock.new('WETH', 'WETH');
         this.token = await TokenMock.new('INCH', 'INCH');
 
         this.feeCollector = await FeeCollector.new(this.token.address, minValue);
@@ -81,7 +77,7 @@ contract('FeeCollector', async function ([_, wallet, wallet2]) {
             await this.feeCollector.contract.methods.valueForTime(1000000, this.weth.address).send({ from: _ });
             const receipt = await this.feeCollector.contract.methods.valueForTime(0xFFFFF, this.weth.address).send({ from: _ });
             if (process.env.npm_lifecycle_event !== 'coverage') {
-                expect(await profileEVM(receipt.transactionHash, 'SLOAD')).equal(1);
+                expect(await profileEVM(receipt.transactionHash, ['SLOAD'])).to.be.deep.equals([1]);
             }
 
             // await this.feeCollector.contract.methods.valueForTimeSimple(0, this.weth.address).send({ from: _ });
